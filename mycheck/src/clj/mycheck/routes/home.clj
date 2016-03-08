@@ -7,7 +7,7 @@
 (def authurl
   [:safe
     (str "https://demo-ap08-prod.apigee.net/oauth/authorize?"
-      "redirect_uri=" "http://localhost:3000/auth"
+      "redirect_uri=" "http://www.fiftyriver.net:3000/auth"
       "&"
       "client_id=" "4kSp7wOSg8Vfg6KIQHZ6wPQi5j4XkaCX"
       "&"
