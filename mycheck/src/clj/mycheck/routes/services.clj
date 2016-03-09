@@ -2,8 +2,23 @@
   (:require [ring.util.http-response :refer :all]
             [compojure.api.sweet :refer :all]
             [schema.core :as s]
-            [clojure.tools.logging :as log]))
+            [clojure.tools.logging :as log]
+            [clj-http.client :as client]
+            [clojure.data.json :as json]))
 
+;; Api endpoint
+(def apiendpoint "https://demo-ap08-prod.apigee.net")
+
+;; convert string to jason
+(defn get-body-as-json [response]
+  (json/read-str (response :body)))
+
+;; Bank API: get user
+(defn getuser [token]
+  (client/get (str apiendpoint "/users/me")
+              {:headers {:Authorization token}}))
+
+;; todo: delete this schema
 (s/defschema Thingie {:id Long
                       :hot Boolean
                       :tag (s/enum :kikka :kukka)
@@ -19,13 +34,22 @@
   (context "/api" []
     :tags ["samples"]
     (POST "/auth" []
-      :tags ["auth"]
+      :tags ["auth" "dev"]
       :return       {:access_token s/Str}
       :form-params   [access_token :- s/Str]
       :summary      "callback for bank oauth"
       (do
         (log/info (str "/auth: token=" access_token))
         (ok {:access_token access_token})))
+
+    (GET "/myinfo" []
+      :tags ["user"]
+      :return       {:user_id s/Str}
+      :header-params [auth_token :- s/Str]
+      :summary      "get user information"
+      (do
+        (log/info (str auth_token))
+        (ok {:user_id "dummy"})))
 
     (GET "/plus" []
       :return       Long

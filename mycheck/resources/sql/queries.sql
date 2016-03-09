@@ -1,21 +1,16 @@
--- name: create-user!
--- creates a new user record
-INSERT INTO users
-(id, first_name, last_name, email, pass)
-VALUES (:id, :first_name, :last_name, :email, :pass)
+-- name: create-accounts!
+-- creates a new check account
+INSERT INTO accounts
+(bk_user_id, bk_user_name, bk_account_id, balance)
+VALUES (:user_id, :user_name, :account_id, :balance)
 
--- name: update-user!
--- update an existing user record
-UPDATE users
-SET first_name = :first_name, last_name = :last_name, email = :email
+-- name: update-balance!
+-- update check
+UPDATE accounts
+SET balance = :balance
 WHERE id = :id
 
--- name: get-user
--- retrieve a user given the id.
-SELECT * FROM users
-WHERE id = :id
-
--- name: delete-user!
--- delete a user given the id
-DELETE FROM users
-WHERE id = :id
+-- name: get-account-by-user
+-- retrieve a account by bk_user_id
+SELECT * FROM accounts
+WHERE bk_user_id = :user_id

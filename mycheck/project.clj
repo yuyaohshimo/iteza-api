@@ -22,13 +22,14 @@
                  [ring "1.4.0" :exclusions [ring/ring-jetty-adapter]]
                  [mount "0.1.8"]
                  [luminus-nrepl "0.1.2"]
-                 [migratus "0.8.9"]
+                 [migratus "0.8.12"]
                  [conman "0.3.0"]
                  [com.h2database/h2 "1.4.191"]
                  [metosin/compojure-api "1.0.0-RC1"]
                  [org.webjars/webjars-locator-jboss-vfs "0.1.0"]
                  [luminus-immutant "0.1.0"]
-                 [luminus-log4j "0.1.2"]]
+                 [luminus-log4j "0.1.2"]
+                 [clj-http "2.1.0"]]
 
   :min-lein-version "2.0.0"
   :uberjar-name "mycheck.jar"
@@ -40,7 +41,7 @@
   :migratus {:store :database}
 
   :plugins [[lein-environ "1.0.1"]
-            [migratus-lein "0.2.1"]]
+            [migratus-lein "0.2.5"]]
   :profiles
   {:uberjar {:omit-source true
              :env {:production true}
@@ -54,8 +55,8 @@
                                  [ring/ring-devel "1.4.0"]
                                  [pjstadig/humane-test-output "0.7.1"]
                                  [mvxcvi/puget "1.0.0"]]
-                  
-                  
+
+
                   :source-paths ["env/dev/clj" "test/clj"]
                   :resource-paths ["env/dev/resources"]
                   :repl-options {:init-ns user}
