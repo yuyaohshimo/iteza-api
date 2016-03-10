@@ -2,16 +2,17 @@
   (:require [mycheck.layout :as layout]
             [compojure.core :refer [defroutes GET]]
             [ring.util.http-response :as response]
-            [clojure.java.io :as io]))
+            [clojure.java.io :as io]
+            [config.core :refer [env]]))
 
 (def authurl
   [:safe
-    (str "https://demo-ap08-prod.apigee.net/oauth/authorize?"
-      "redirect_uri=" "http://www.fiftyriver.net:3000/auth"
-      "&"
-      "client_id=" "4kSp7wOSg8Vfg6KIQHZ6wPQi5j4XkaCX"
-      "&"
-      "response_type=token")])
+    (str (:api-endpoint env)
+      "/oauth/authorize?"
+      "redirect_uri="
+      (:url env) ":" (:port env) "/auth" "&"
+      "client_id=" (:app-token env)
+      "&" "response_type=token")])
 
 (defn home-page []
   (layout/render

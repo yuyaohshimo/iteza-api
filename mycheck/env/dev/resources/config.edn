@@ -1,4 +1,3 @@
-{:port 3000
- :url "http://www.fiftyriver.net"
+{:url "http://localhost"
  :api-endpoint "https://demo-ap08-prod.apigee.net"
  :app-token "4kSp7wOSg8Vfg6KIQHZ6wPQi5j4XkaCX"}

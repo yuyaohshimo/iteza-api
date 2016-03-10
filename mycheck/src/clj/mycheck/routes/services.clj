@@ -4,103 +4,82 @@
             [schema.core :as s]
             [clojure.tools.logging :as log]
             [clj-http.client :as client]
-            [clojure.data.json :as json]))
+            [clojure.data.json :as json]
+            [config.core :refer [env]])
+  (:use     [slingshot.slingshot :only [try+ throw+]]))
 
 ;; Api endpoint
-(def apiendpoint "https://demo-ap08-prod.apigee.net")
+(def apicontext (str (:api-endpoint env) "/v1"))
 
-;; convert string to jason
+;; convert string to json
 (defn get-body-as-json [response]
   (json/read-str (response :body)))
 
+;; restructure bank user
+(defn restructure-user [user]
+  (let [accounts (get user "my_accounts")
+        account (first (filter #(= "1" (get % "account_type_cd")) accounts))]
+    (-> (apply assoc {}
+          (mapcat (fn [k] [(keyword k) (get user k)]) ["user_id" "user_name" "phone_number"]))
+        (assoc :account_id (get account "account_id")
+               :balance (get account "balance")))))
+
 ;; Bank API: get user
 (defn getuser [token]
-  (client/get (str apiendpoint "/users/me")
-              {:headers {:Authorization token}}))
+  (-> (str apicontext "/users/me")
+    (client/get {:headers {:Authorization (str "Bearer " token)}})
+    (get-body-as-json)
+    (restructure-user)))
 
-;; todo: delete this schema
-(s/defschema Thingie {:id Long
-                      :hot Boolean
-                      :tag (s/enum :kikka :kukka)
-                      :chief [{:name String
-                               :type #{{:id String}}}]})
 
+;; account schema
+(s/defschema Account {:user_id s/Str
+                      :user_name s/Str
+                      :phone_number s/Str
+                      :account_id s/Str
+                      :balance Long})
+
+;; common wrapper for api call
+(defn wrap-api [call]
+  (try+
+    (call)
+    (catch [:status 401] {:keys [request-time headers body :as e]}
+      (log/warn (str e))
+      (unauthorized body))))
+
+;; service definitions
 (defapi service-routes
   {:swagger {:ui "/swagger-ui"
              :spec "/swagger.json"
              :data {:info {:version "1.0.0"
-                           :title "MyCheck API"
+                           :title "Checky API"
                            :description "じぶん小切手 API"}}}}
   (context "/api" []
-    :tags ["samples"]
     (POST "/auth" []
       :tags ["auth" "dev"]
       :return       {:access_token s/Str}
       :form-params   [access_token :- s/Str]
-      :summary      "callback for bank oauth"
+      :summary      "OAuthのコールバック用。開発用"
       (do
         (log/info (str "/auth: token=" access_token))
         (ok {:access_token access_token})))
 
-    (GET "/myinfo" []
+    (GET "/checky" []
       :tags ["user"]
-      :return       {:user_id s/Str}
+      :return       (s/maybe Account)
       :header-params [auth_token :- s/Str]
-      :summary      "get user information"
+      :summary      "ユーザー情報と小切手口座情報を返す"
       (do
         (log/info (str auth_token))
-        (ok {:user_id "dummy"})))
+        (wrap-api
+          (fn [] (ok (getuser auth_token))))))
 
-    (GET "/plus" []
-      :return       Long
-      :query-params [x :- Long, {y :- Long 1}]
-      :summary      "x+y with query-parameters. y defaults to 1."
-      (ok (+ x y)))
-
-    (POST "/minus" []
-      :return      Long
-      :body-params [x :- Long, y :- Long]
-      :summary     "x-y with body-parameters."
-      (ok (- x y)))
-
-    (GET "/times/:x/:y" []
-      :return      Long
-      :path-params [x :- Long, y :- Long]
-      :summary     "x*y with path-parameters"
-      (ok (* x y)))
-
-    (POST "/divide" []
-      :return      Double
-      :form-params [x :- Long, y :- Long]
-      :summary     "x/y with form-parameters"
-      (ok (/ x y)))
-
-    (GET "/power" []
-      :return      Long
-      :header-params [x :- Long, y :- Long]
-      :summary     "x^y with header-parameters"
-      (ok (long (Math/pow x y))))
-
-    (PUT "/echo" []
-      :return   [{:hot Boolean}]
-      :body     [body [{:hot Boolean}]]
-      :summary  "echoes a vector of anonymous hotties"
-      (ok body))
-
-    (POST "/echo" []
-      :return   (s/maybe Thingie)
-      :body     [thingie (s/maybe Thingie)]
-      :summary  "echoes a Thingie from json-body"
-      (ok thingie)))
-
-  (context "/context" []
-    :tags ["context"]
-    :summary "summary inherited from context"
-    (context "/:kikka" []
-      :path-params [kikka :- s/Str]
-      :query-params [kukka :- s/Str]
-      (GET "/:kakka" []
-        :path-params [kakka :- s/Str]
-        (ok {:kikka kikka
-             :kukka kukka
-             :kakka kakka})))))
+    (POST "/checky/:id/issue" []
+      :tags ["checky"]
+      :return       {:account (s/maybe Account)}
+      :path-params  [id :- s/Str]
+      :header-params [auth_token :- s/Str]
+      :form-params  [amount :- Long]
+      :summary      "小切手の発行"
+      (wrap-api
+        (fn [] (ok {:account (getuser auth_token)}))))))
