@@ -12,9 +12,13 @@
 ;; Api endpoint
 (def apicontext (str (:api-endpoint env) "/v1"))
 
-;; convert string to json
+;; convert string to json : FIXME
 (defn get-body-as-json [response]
   (json/read-str (response :body)))
+
+;; convert string to json
+(defn get-body-as-map [response]
+  (json/read-str (response :body) :key-fn keyword))
 
 ;; account schema
 (s/defschema Account {(s/optional-key :id) Long
@@ -43,12 +47,22 @@
         (assoc :account_id (get account "account_id")
                :balance (get account "balance")))))
 
+;; Bank API helper : OAuth token header
+(defn header-token [token]
+  {:headers {:Authorization (str "Bearer " token)}})
+
 ;; Bank API: get user
 (defn getuser [token]
   (-> (str apicontext "/users/me")
     (client/get {:headers {:Authorization (str "Bearer " token)}})
     (get-body-as-json)
     (restructure-user)))
+
+;; Bank API: get account
+(defn getAccount [token account_id]
+  (-> (str apicontext "/accounts/" account_id)
+    (client/get (header-token token))
+    (get-body-as-map)))
 
 ;; utility
 
