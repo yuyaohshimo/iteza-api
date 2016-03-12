@@ -1,8 +1,9 @@
 CREATE TABLE accounts
 (
     id IDENTITY,
-    bk_user_id VARCHAR(20) NOT NULL UNIQUE,
-    bk_user_name VARCHAR(100) NOT NULL,
-    bk_account_id VARCHAR(20) NOT NULL,
+    user_id VARCHAR(20) NOT NULL UNIQUE,
+    user_name VARCHAR(100) NOT NULL,
+    account_id VARCHAR(20) NOT NULL,
+    phone_number VARCHAR(20),
     balance INT NOT NULL
 );

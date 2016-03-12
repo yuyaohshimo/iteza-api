@@ -1,8 +1,8 @@
 -- name: create-accounts!
 -- create a new check account
 INSERT INTO accounts
-(bk_user_id, bk_user_name, bk_account_id, balance)
-VALUES (:user_id, :user_name, :account_id, :balance)
+(user_id, user_name, account_id, phone_number, balance)
+VALUES (:user_id, :user_name, :account_id, :phone_number, :balance)
 
 -- name: update-balance!
 -- update a check
@@ -13,13 +13,27 @@ WHERE id = :id
 -- name: get-account-by-user
 -- retrieve a account by bk_user_id
 SELECT * FROM accounts
-WHERE bk_user_id = :user_id
+WHERE user_id = :user_id
+
+-- name: get-account-by-accid
+-- retrieve a account by account_id
+SELECT * FROM accounts
+WHERE account_id = :account_id
+
+-- name: get-accounts
+-- retrieve all accounts for debug
+SELECT * FROM accounts
 
 -- name: create-check!
 -- create a check. status = 0
 INSERT INTO checks
 (id, token, acc_token, amount, status)
 VALUES (:id, :token,:acc_token, :amount, 0)
+
+-- name: get-check-by-key
+-- get check by id and token
+SELECT * FROM checks
+WHERE id = :id and token = :token
 
 -- name: receive-check!
 -- receive a check. change status by id
