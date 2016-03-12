@@ -27,13 +27,13 @@ SELECT * FROM accounts
 -- name: create-check!
 -- create a check. status = 0
 INSERT INTO checks
-(id, token, acc_token, amount, status)
-VALUES (:id, :token,:acc_token, :amount, 0)
+(id, account_id, token, acc_token, amount, status)
+VALUES (:id,:account_id, :token,:acc_token, :amount, 0)
 
 -- name: get-check-by-key
 -- get check by id and token
 SELECT * FROM checks
-WHERE id = :id and token = :token
+WHERE id = :id
 
 -- name: receive-check!
 -- receive a check. change status by id
@@ -57,8 +57,10 @@ SET status = 3
 WHERE dest = :dest and status = 2
 
 -- name: get-checks
--- for debug
-SELECT * from checks;
+SELECT * FROM checks;
+
+-- name: get-checks-by-status
+SELECT * FROM checks WHERE status = :status;
 
 -- name: delete-check!
 -- for debug

@@ -17,12 +17,22 @@
   (json/read-str (response :body)))
 
 ;; account schema
-(s/defschema Account {:id (s/maybe Long)
+(s/defschema Account {(s/optional-key :id) Long
                       :user_id s/Str
                       :user_name s/Str
                       :phone_number s/Str
                       :account_id s/Str
                       :balance Long})
+
+;; check schema
+(s/defschema Check {:id s/Str
+                    :account_id s/Str
+                    :token s/Str
+                    :acc_token s/Str
+                    :amount Long
+                    :status s/Int
+                    :dest (s/maybe s/Str)
+                    :dest_acc_id (s/maybe s/Str)})
 
 ;; restructure bank user
 (defn restructure-user [user]
@@ -49,8 +59,8 @@
     (subs sec (- len 6) len)))
 
 ;; check id generator
-(defn id-gen [account_id]
-  (str (subs account_id 3) (sec-str)))
+(defn id-gen [account_id sec]
+  (str (subs account_id 3) sec))
 
 ;; common wrapper for api call
 (defn wrap-api [call]
@@ -73,8 +83,11 @@
         user))))
 
 ;; --- check functions ---
-(defn create-check! [id token auth amt]
-  (db/create-check! {:id id
+
+;; create a new check
+(defn create-check! [account_id token auth amt]
+  (db/create-check! {:id (id-gen account_id token)
+                     :account_id account_id
                      :token token
                      :acc_token auth
                      :amount amt}))
@@ -117,24 +130,37 @@
       :summary      "小切手の発行"
       (let [user (getuser auth_token)
             accid {:account_id id}
-            token "1111"
-            account (first (db/get-account-by-accid accid))]
-        (if account
-          (do
-            (create-check! id token auth_token amount)
-            ;; TODO: 口座更新
-            ;; 更新された口座を返す
-            (let [u_account (first (db/get-account-by-accid accid))]
-              (ok {:account u_account :checkid (str id token)})))
-          (not-found {:errors {:msg "checky口座が存在しません" :id id}}))))
+            token (sec-str)
+            account (first (db/get-account-by-accid accid))
+            new-balance (if account (- (account :balance) amount) -1)]
+        (cond
+          (nil? account) (not-found {:errors {:msg "checky口座が存在しません" :id id}})
+          (> 0 new-balance) (bad-request {:errors {:msg "口座残高が不足しています" :id id :amount amount}})
+          :else
+            (do
+              (create-check! id token auth_token amount)
+              ;; なんでid で更新してaccount_id で引くのか...
+              (db/update-balance! {:id (account :id) :balance new-balance})
+              (let [u_account (first (db/get-account-by-accid accid))]
+                (ok {:account u_account :checkid (id-gen id token)}))))))
 
     ;; 小切手受け取りAPI
     (POST "/check/receive" []
       :tags ["receive"]
       :return {:msg s/Str}
-      :body [id {:id s/Str :receiver s/Str}]
+      :body [rcv {:id s/Str :receiver s/Str}]
       :summary "小切手の受け取り"
-      (ok {:msg "受け取りました"}))
+      (let [id (rcv :id)
+            ;; TODO: なんでマップから取り出してマップに詰めるんだ...
+            check (first (db/get-check-by-key {:id id}))
+            status (if check (check :status) nil)]
+        (cond
+          (nil? check) (not-found {:msg "小切手がありません" :id id})
+          (not= 0 status) (bad-request {:msg "すでに処理済みです" :status status})
+          :else
+            (do
+              (db/receive-check! {:id id :dest (rcv :receiver)})
+              (ok {:msg "受け取りました"})))))
 
     ;; 口座入力API
     (POST "/check/checkin" []
@@ -150,4 +176,14 @@
       :return {:msg s/Str}
       :body [id {:receiver s/Str}]
       :summary "小切手の決済"
-      (ok {:msg "決済しました"}))))
+      (ok {:msg "決済しました"}))
+
+    ;; 小切手一覧
+    (GET "/checks" []
+      :tags ["list"]
+      :return [(s/maybe Check)]
+      :query-params [{status :- s/Int nil}]
+      :summary "小切手一覧"
+      (if status
+        (db/get-checks-by-status {:status status})
+        (db/get-checks)))))
