@@ -1,7 +1,23 @@
 require 'mailman'
 
-Dir[File.expand_path('../jobs', __FILE__) << '/*.rb'].each do |file|
-  require file
+$LOAD_PATH << File.dirname(__FILE__)
+
+['../jobs'].each do |p|
+  Dir[File.expand_path(p, __FILE__) << '/*.rb'].each do |file|
+    require file
+  end
+end
+
+Mail.defaults do
+  delivery_method :smtp, {
+    address:   'smtp.muumuu-mail.com',
+    port:      465,
+    domain:    'checky.me',
+    user_name: 'get@checky.me',
+    password:  ENV['CHECKY_PASSWORD'],
+    authentication: 'plain',
+    ssl: true
+  }
 end
 
 Mailman.config.imap = {
