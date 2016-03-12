@@ -36,6 +36,8 @@ class Mailman::Route
     def match(message)
       if message.multipart? && message.has_attachments?
         [{}, []]
+      elsif message.attachment?
+        [{}, []]
       else
         nil
       end
@@ -48,11 +50,15 @@ Mailman::Application.run do
 #    puts 'Hello!'
 #  end
 
-  body '入金', DepositJob # do
+  body '入金', DepositRequestJob # do
 #    puts '入金しますよ？'
 #  end
 
-  body /[0-9]{10}/, ConfirmJob # do
-#    puts '入金したよ'
+  body /[0-9]{10}/, DepositJob # do
+#    puts 'ここでいい？'
+#  end
+
+  body 'はい', DepositConfirmJob # do
+#    puts '入金したよ！'
 #  end
 end

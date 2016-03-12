@@ -8,6 +8,18 @@ module SendMail
       deliver(from, 'templates/receive_success.txt')
     end
 
+    def send_deposit_request(from)
+      deliver(from, 'templates/deposit_request.txt')
+    end
+
+    def send_deposit_confirm(from)
+      deliver(from, 'templates/deposit_confirm.txt')
+    end
+
+    def send_deposit_success(from)
+      deliver(from, 'templates/deposit_success.txt')
+    end
+
     def deliver(from, template_path)
       mail = Mail.new do
         from    'get@checky.me'
