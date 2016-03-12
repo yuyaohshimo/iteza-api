@@ -1,0 +1,2 @@
+class DepositJob
+end

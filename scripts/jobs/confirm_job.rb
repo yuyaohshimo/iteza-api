@@ -1,0 +1,2 @@
+class ConfirmJob
+end
