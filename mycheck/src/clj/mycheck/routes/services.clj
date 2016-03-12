@@ -40,6 +40,18 @@
     (get-body-as-json)
     (restructure-user)))
 
+;; utility
+
+;; sec 6 digits
+(defn sec-str []
+  (let [sec (str (System/currentTimeMillis))
+        len (count sec)]
+    (subs sec (- len 6) len)))
+
+;; check id generator
+(defn id-gen [account_id]
+  (str (subs account_id 3) (sec-str)))
+
 ;; common wrapper for api call
 (defn wrap-api [call]
   (try+

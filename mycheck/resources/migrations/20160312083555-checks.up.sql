@@ -1,6 +1,7 @@
 CREATE TABLE checks
 (
-  id VARCHAR(10) NOT NULL,
+  id VARCHAR(14) NOT NULL,
+  -- account_id VARCHAR(10) NOT NULL,
   token VARCHAR(4) NOT NULL,
   acc_token VARCHAR(255) NOT NULL,
   amount INT NOT NULL,
