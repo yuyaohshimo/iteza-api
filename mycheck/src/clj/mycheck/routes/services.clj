@@ -165,10 +165,14 @@
     ;; 口座入力API
     (POST "/check/checkin" []
       :tags ["receive"]
-      :return {:msg s/Str}
-      :body [id {:receiver s/Str :account_no s/Str}]
+      :return {:msg s/Str :account_no s/Str :amount Long}
+      :body [rcv {:receiver s/Str :account_no s/Str}]
       :summary "送金先口座登録"
-      (ok {:msg "設定しました"}))
+      (let [count (db/confirm-check! {:dest (rcv :receiver) :acc_id (rcv :account_no)})
+            check (first (db/get-check-for-confirm {:dest (rcv :receiver)}))]
+        (if (= 1 count)
+          (ok {:msg "設定しました" :account_no (rcv :account_no) :amount (check :amount)})
+          (bad-request {:msg "処理できない状態か、登録のないメールアドレスです" :request rcv}))))
 
     ;; 小切手決済
     (POST "/check/settle" []

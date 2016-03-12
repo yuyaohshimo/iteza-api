@@ -62,6 +62,10 @@ SELECT * FROM checks;
 -- name: get-checks-by-status
 SELECT * FROM checks WHERE status = :status;
 
+-- name: get-check-for-confirm
+SELECT * FROM checks
+WHERE dest = :dest and status = 2
+
 -- name: delete-check!
 -- for debug
 DELETE from checks WHERE id = :id;
