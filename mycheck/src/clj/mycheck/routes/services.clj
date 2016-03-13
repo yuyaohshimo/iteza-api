@@ -107,7 +107,10 @@
     (call)
     (catch [:status 401] {:keys [request-time headers body :as e]}
       (log/warn (str e))
-      (unauthorized body))))
+      (unauthorized body))
+    (catch [:status 400] {:keys [request-time headers body :as e]}
+      (log/warn (str e))
+      (bad-request body))))
 
 ;; --- account functions ---
 
@@ -226,18 +229,18 @@
 
     ;; 小切手承認
     (POST "/check/authorize" []
-      :tags ["recive"]
+      :tags ["receive"]
       :return {:msg s/Str :count s/Int}
       :header-params [auth_token :- s/Str]
       :summary "小切手の承認"
       (wrap-api
         (fn []
           ;; 振込予約
-          (for [check (db/get-checks-by-status {:status 3})]
-              (transfer auth_token check))
-          ;; 振込承認
-          (approve auth_token)
-          (ok {:msg "振込が行われました"}))))
+          (let [count (for [check (db/get-checks-by-status {:status 3})]
+                        (transfer auth_token check))]
+            ;; 振込承認
+            (approve auth_token)
+            (ok {:msg "振込が行われました" :count count})))))
 
     ;; 小切手一覧
     (GET "/checks" []
