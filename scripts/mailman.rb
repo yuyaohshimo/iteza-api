@@ -45,6 +45,23 @@ class Mailman::Route
   end
 end
 
+class Mailman::Route
+  # Matches against the Body of a message.
+  class BodyCondition < Condition
+    def match(message)
+      if message.multipart?
+        result = nil
+        message.parts.each do |part|
+          break if result = @matcher.match(part.decoded)
+        end
+        return result
+      else
+        @matcher.match(message.body.decoded.force_encoding('utf-8'))
+      end
+    end
+  end
+end
+
 Mailman::Application.run do
   attachment true, ReceiveJob # do
 #    puts 'Hello!'
