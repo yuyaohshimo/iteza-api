@@ -49,12 +49,19 @@ UPDATE checks
 SET status = 2, dest_acc_id = :acc_id
 WHERE dest = :dest and status = 1
 
--- name: done-check!
--- update status complete
--- status 3: DONE
+-- name: ready-check!
+-- update status ready to authorize
+-- status 3: READY
 UPDATE checks
 SET status = 3
 WHERE dest = :dest and status = 2
+
+-- name: done-check!
+-- update status complete
+-- satus 4: COMPLETE
+UPDATE checks
+SET status = 4
+WHERE id = :id
 
 -- name: get-checks
 SELECT * FROM checks;
@@ -62,9 +69,9 @@ SELECT * FROM checks;
 -- name: get-checks-by-status
 SELECT * FROM checks WHERE status = :status;
 
--- name: get-check-for-confirm
+-- name: get-check-by-dest
 SELECT * FROM checks
-WHERE dest = :dest and status = 2
+WHERE dest = :dest and status = :status
 
 -- name: delete-check!
 -- for debug

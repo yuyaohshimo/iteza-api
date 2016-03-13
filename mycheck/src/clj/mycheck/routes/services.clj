@@ -47,9 +47,24 @@
         (assoc :account_id (get account "account_id")
                :balance (get account "balance")))))
 
-;; Bank API helper : OAuth token header
+;; --- Bank API helper ---
+;; OAuth token header
 (defn header-token [token]
   {:headers {:Authorization (str "Bearer " token)}})
+
+;; だせえ
+(defn header-token-post [token]
+  {:headers {:Authorization (str "Bearer " token)
+             :Content-Type "application/json"}})
+
+;; Checky account
+(def checky-account "3454857042")
+
+;; convert check to json string
+(defn check-to-json [check]
+  (-> (assoc {} :amount (check :amount))
+    (assoc :payee {:account_id (check :dest_acc_id)})
+    (json/write-str)))
 
 ;; Bank API: get user
 (defn getuser [token]
@@ -63,6 +78,16 @@
   (-> (str apicontext "/accounts/" account_id)
     (client/get (header-token token))
     (get-body-as-map)))
+
+;; Bank API: transfer
+(defn transfer [token check]
+  (-> (str apicontext "/accounts/" checky-account "/transfers")
+    (client/post (assoc (header-token-post token) :body (check-to-json check) :accept :json))))
+
+;; Bank API: transfer approve
+(defn approve [token]
+  (-> (str apicontext "/accounts/" checky-account "/transfers?action=approve")
+    (client/post (assoc (header-token-post token) :body "{}" :accept :json))))
 
 ;; utility
 
@@ -183,7 +208,7 @@
       :body [rcv {:receiver s/Str :account_no s/Str}]
       :summary "送金先口座登録"
       (let [count (db/confirm-check! {:dest (rcv :receiver) :acc_id (rcv :account_no)})
-            check (first (db/get-check-for-confirm {:dest (rcv :receiver)}))]
+            check (first (db/get-check-by-dest {:dest (rcv :receiver) :status 2}))]
         (if (= 1 count)
           (ok {:msg "設定しました" :account_no (rcv :account_no) :amount (check :amount)})
           (bad-request {:msg "処理できない状態か、登録のないメールアドレスです" :request rcv}))))
@@ -192,9 +217,27 @@
     (POST "/check/settle" []
       :tags ["receive"]
       :return {:msg s/Str}
-      :body [id {:receiver s/Str}]
-      :summary "小切手の決済"
-      (ok {:msg "決済しました"}))
+      :body [rcv {:receiver s/Str}]
+      :summary "小切手の入金予約"
+      (let [count (db/ready-check! {:dest (rcv :receiver)})]
+        (if (= 1 count)
+          (ok {:msg "入金予約を行いました。承認後、振込が行われます"})
+          (bad-request {:msg "処理出来ない状態か、登録のないメールアドレスです"}))))
+
+    ;; 小切手承認
+    (POST "/check/authorize" []
+      :tags ["recive"]
+      :return {:msg s/Str :count s/Int}
+      :header-params [auth_token :- s/Str]
+      :summary "小切手の承認"
+      (wrap-api
+        (fn []
+          ;; 振込予約
+          (for [check (db/get-checks-by-status {:status 3})]
+              (transfer auth_token check))
+          ;; 振込承認
+          (approve auth_token)
+          (ok {:msg "振込が行われました"}))))
 
     ;; 小切手一覧
     (GET "/checks" []
