@@ -5,24 +5,31 @@
             [clojure.java.io :as io]
             [config.core :refer [env]]))
 
-(def authurl
+(defn callback-url [path]
   [:safe
     (str (:api-endpoint env)
       "/oauth/authorize?"
       "redirect_uri="
-      (:url env) ":" (:port env) "/auth" "&"
+      (:url env) ":" (:port env) path "&"
       "client_id=" (:app-token env)
       "&" "response_type=token")])
 
 (defn home-page []
   (layout/render
-    "home.html" {:authurl authurl}))
+    "home.html" {:authurl (callback-url "/auth")
+                 :approveurl (callback-url "/approve")}))
 
 (defn auth-page []
   (layout/render "auth.html"))
 
 (defn about-page []
   (layout/render "about.html"))
+
+(defn hello-page []
+  (layout/render-xml "sample.xml"))
+
+(defn approve-page []
+  (layout/render "approve.html"))
 
 (defn docs-page []
   (layout/render "docs.html"
@@ -32,4 +39,6 @@
   (GET "/" [] (home-page))
   (GET "/auth" [] (auth-page))
   (GET "/about" [] (about-page))
-  (GET "/docs" [] (docs-page)))
+  (GET "/docs" [] (docs-page))
+  (GET "/hello" [] (hello-page))
+  (GET "/approve" [] (approve-page)))

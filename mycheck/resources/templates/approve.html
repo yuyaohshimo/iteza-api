@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="jumbotron">
+    <h1>小切手承認</h1>
+  </div>
+
+  <div class="row">
+    <div class="span12">
+    </div>
+  </div>
+{% endblock %}
+
+{% block page-scripts %}
+  <script>
+    $(document).ready(function(){
+      var hash = window.location.hash.split("#");
+      var params = hash[1].split("&");
+      var token = "";
+      var opener = window.opener;
+
+      for(var i = 0;i<params.length; i++){
+        var param = params[i].split("=");
+        if(param[0] == "access_token"){
+          token = param[1];
+
+          $.post("/api/check/approve",{ auth_token: token },function(data){
+            opener.$("#approvebtn").removeClass("btn-primary");
+            opener.$("#approvebtn").addClass("btn-success");
+            opener.$("#response").text(data);
+            console.log(data);
+            //window.close();
+          });
+        }
+      }
+
+    });
+  </script>
+{% endblock %}

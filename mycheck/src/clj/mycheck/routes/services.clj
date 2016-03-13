@@ -6,8 +6,17 @@
             [clj-http.client :as client]
             [clojure.data.json :as json]
             [config.core :refer [env]]
-            [mycheck.db.core :as db])
+            [mycheck.db.core :as db]
+            [twilio.core :as tw])
   (:use     [slingshot.slingshot :only [try+ throw+]]))
+
+
+;; Twillio send sms
+(defn send-sms [message]
+  (tw/with-auth (:twillio-sid env) (:twillio-token env)
+    (tw/send-sms {:From "+16463927087'"
+                  :To (:sms-to env)
+                  :Body message})))
 
 ;; Api endpoint
 (def apicontext (str (:api-endpoint env) "/v1"))
@@ -228,13 +237,14 @@
           (bad-request {:msg "処理出来ない状態か、登録のないメールアドレスです"}))))
 
     ;; 小切手承認
-    (POST "/check/authorize" []
+    (POST "/check/approve" []
       :tags ["receive"]
       :return {:msg s/Str :count s/Int}
-      :header-params [auth_token :- s/Str]
+      :form-params [auth_token :- s/Str]
       :summary "小切手の承認"
       (wrap-api
         (fn []
+          (log/info (str "/check/approve:" auth_token))
           ;; 振込予約
           (let [count (for [check (db/get-checks-by-status {:status 3})]
                         (transfer auth_token check))]
