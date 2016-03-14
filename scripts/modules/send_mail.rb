@@ -8,6 +8,14 @@ module SendMail
       deliver(from, 'templates/receive_success.txt')
     end
 
+    def send_receive_failure(from)
+      deliver(from, 'templates/receive_failure.txt')
+    end
+
+    def send_receive_wrong_check(from)
+      deliver(from, 'templates/receive_wrong_check.txt')
+    end
+
     def send_deposit_request(from)
       deliver(from, 'templates/deposit_request.txt')
     end

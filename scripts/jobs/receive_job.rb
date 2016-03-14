@@ -14,15 +14,18 @@ class ReceiveJob
     "image/png"  => ".png",
   }
 
-  SCRIPT_PATH = "scripts/dummy_facevalue.sh"
+  SCRIPT_PATH = "scripts/get_facevalue.sh"
 
   API_URL = "http://www.fiftyriver.net:3000/api/check/receive"
 
   def receive(message, params)
+    attachment = nil
+    mime_type = ""
+
     if message.multipart? && message.has_attachments?
       message.attachments.each do |a|
         mime_type = a.mime_type
-        if ["image/jpeg", "image/png"].include? a.mime_type
+        if ["image/jpeg", "image/png"].include? mime_type
           attachment = a.body.decoded
           break
         end
@@ -42,10 +45,10 @@ class ReceiveJob
     r = `#{SCRIPT_PATH} #{File.absolute_path f}`
     puts r
 
-    if ($? == 0 && r.lines.size >= 2)
-      face_value = r.lines[0].match(/[0-9,]+/)[0].gsub(/(\d{0,3}),(\d{3})/, '\1\2').to_i
-      id = r.lines[1].delete("idText:")
-      receiver = message.from_addrs[0]
+    receiver = message.from_addrs[0]
+
+    if ($? == 0)
+      id = r.chomp
 
       begin
         response = RestClient.post API_URL,
@@ -57,8 +60,11 @@ class ReceiveJob
 
         send_receive_success(receiver)
       rescue => e
+        send_receive_wrong_check(receiver)
         puts e.message
       end
+    else
+      send_receive_failure(receiver)
     end
   end
 end
