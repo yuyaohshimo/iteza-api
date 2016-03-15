@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="jumbotron">
+    <h1>じぶん小切手</h1>
+    <p>ダミーログイン</p>
+    <p>
+      <a id="loginbtn" class="btn btn-primary btn-lg" onclick="window.open('{{authurl}}')">login</a>
+      <b>token: </b><span id="token">[Not Logged In]</span>
+    </p>
+  </div>
+
+  <div class="row">
+    <div class="span12">
+      じぶん小切手のサンプルページ。APIのテスト用途です。
+    </div>
+  </div>
+{% endblock %}

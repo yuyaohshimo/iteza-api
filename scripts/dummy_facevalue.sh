@@ -1,0 +1,3 @@
+#!/bin/sh
+
+echo "0A34BEGD05DEGSE0EGE"

@@ -1,7 +1,9 @@
 # iteza-api
 
-## API List
+## 画面遷移, API呼び出しフロー
 
-* API-1: APIの簡単な説明
+Wikiに記載しているので、そちらを参照してください。
 
-### API-1 簡単な説明
+## APIスペック
+
+Swaggerで記載予定

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+  <div class="jumbotron">
+    <h1>認証コールバック</h1>
+  </div>
+
+  <div class="row">
+    <div class="span12">
+    </div>
+  </div>
+{% endblock %}
+
+{% block page-scripts %}
+  <script>
+    $(document).ready(function(){
+      var hash = window.location.hash.split("#");
+      var params = hash[1].split("&");
+      var token = "";
+      var opener = window.opener;
+
+      for(var i = 0;i<params.length; i++){
+        var param = params[i].split("=");
+        if(param[0] == "access_token"){
+          token = param[1];
+
+          $.post("/api/auth",{ access_token: token },function(data){
+            opener.$("#loginbtn").removeClass("btn-primary");
+            opener.$("#loginbtn").addClass("btn-success");
+            opener.$("#token").text(data.access_token);
+            window.close();
+          });
+        }
+      }
+
+    });
+  </script>
+{% endblock %}
