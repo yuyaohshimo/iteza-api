@@ -3,6 +3,8 @@
             [luminus.http-server :as http]
             [config.core :refer [env]]))
 
+;; this file used for repl. see project.clj
+
 (defn start []
   (http/start {:handler app
                :init    init
@@ -14,5 +16,3 @@
 (defn restart []
   (stop)
   (start))
-
-

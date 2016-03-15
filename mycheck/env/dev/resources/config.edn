@@ -1,7 +1,6 @@
-{:port 3000
- :url "http://www.fiftyriver.net"
+{:url "http://localhost"
  :api-endpoint "https://demo-ap08-prod.apigee.net"
  :app-token "4kSp7wOSg8Vfg6KIQHZ6wPQi5j4XkaCX"
  :twillio-sid "ACcde1a75cb9602a7cc0befb32dc7602f2"
  ;; set twillio-token with env
-}
+ }

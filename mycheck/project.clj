@@ -29,7 +29,9 @@
                  [org.webjars/webjars-locator-jboss-vfs "0.1.0"]
                  [luminus-immutant "0.1.0"]
                  [luminus-log4j "0.1.2"]
-                 [clj-http "2.1.0"]]
+                 [clj-http "2.1.0"]
+                 [slingshot "0.12.2"]
+                 [twilio-api "1.0.1"]]
 
   :min-lein-version "2.0.0"
   :uberjar-name "mycheck.jar"
