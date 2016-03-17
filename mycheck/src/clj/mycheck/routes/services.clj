@@ -8,15 +8,8 @@
             [config.core :refer [env]]
             [mycheck.db.core :as db]
             [twilio.core :as tw])
-  (:use     [slingshot.slingshot :only [try+ throw+]]))
-
-
-;; Twillio send sms
-(defn send-sms [message]
-  (tw/with-auth (:twillio-sid env) (:twillio-token env)
-    (tw/send-sms {:From "+16463927087'"
-                  :To (:sms-to env)
-                  :Body message})))
+  (:use     [slingshot.slingshot :only [try+ throw+]]
+            [mycheck.api.twillio]))
 
 ;; Api endpoint
 (def apicontext (str (:api-endpoint env) "/v1"))
