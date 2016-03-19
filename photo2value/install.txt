@@ -1,0 +1,8 @@
+
+export TESSERACT_INCLUDE_DIR=/usr/local/Cellar/tesseract/3.04.00/include
+export TESSERACT_LIB_DIR=/usr/local/Cellar/tesseract/3.04.00/lib
+export OpenCV_DIR=/usr/local/Cellar/opencv3/3.1.0_1/share/OpenCV
+
+cmake .
+make
+

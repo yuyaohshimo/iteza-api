@@ -1,0 +1,9 @@
+/Debug/
+out
+CMakeCache.txt
+CMakeFiles
+cmake_install.cmake
+Makefile
+photo2value
+test-data
+

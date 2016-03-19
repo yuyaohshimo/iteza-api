@@ -10,4 +10,5 @@
    :naming         {:keys   clojure.string/lower-case
                     :fields clojure.string/upper-case}})
 
-(defqueries "sql/queries.sql" {:connection conn})
+(defqueries "sql/account_queries.sql" {:connection conn})
+(defqueries "sql/check_queries.sql" {:connection conn})
