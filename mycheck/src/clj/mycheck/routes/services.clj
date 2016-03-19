@@ -132,7 +132,7 @@
       :summary "送金先口座登録"
       (let [count (db/confirm-check! {:dest (rcv :receiver) :acc_id (rcv :account_no)})
             check (first (db/get-check-by-dest {:dest (rcv :receiver) :status 2}))]
-        (if (= 1 count)
+        (if (not= 0 count)
           (ok {:msg "設定しました" :account_no (rcv :account_no) :amount (check :amount)})
           (bad-request {:msg "処理できない状態か、登録のないメールアドレスです" :request rcv}))))
 
@@ -143,8 +143,10 @@
       :body [rcv {:receiver s/Str}]
       :summary "小切手の入金予約"
       (let [count (db/ready-check! {:dest (rcv :receiver)})]
-        (if (= 1 count)
-          (ok {:msg "入金予約を行いました。承認後、振込が行われます"})
+        (if (not= 0 count)
+          (do
+            (send-sms "承認が必要です")
+            (ok {:msg "入金予約を行いました。承認後、振込が行われます"}))
           (bad-request {:msg "処理出来ない状態か、登録のないメールアドレスです"}))))
 
     ;; 小切手承認
