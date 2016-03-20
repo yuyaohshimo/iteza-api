@@ -4,13 +4,39 @@
             [schema.core :as s]
             [clojure.tools.logging :as log]
             [config.core :refer [env]]
-            [mycheck.db.core :as db])
+            [mycheck.db.core :as db]
+            [mycheck.api.authy :as auth]
+            [buddy.hashers :as h])
   (:use     [slingshot.slingshot :only [try+ throw+]]
             [mycheck.api.twillio]
             [mycheck.api.mufg]))
 
-;; utility
+;; schema
+;; user schema
+(s/defschema User {:email s/Str
+                   :user_name s/Str
+                   :phone_number s/Str
+                   :password s/Str})
 
+;; account schema
+(s/defschema Account {(s/optional-key :id) Long
+                      :user_id s/Str
+                      :user_name s/Str
+                      :phone_number s/Str
+                      :account_id s/Str
+                      :balance Long})
+
+;; check schema
+(s/defschema Check {:id s/Str
+                    :account_id s/Str
+                    :token s/Str
+                    :acc_token s/Str
+                    :amount Long
+                    :status s/Int
+                    :dest (s/maybe s/Str)
+                    :dest_acc_id (s/maybe s/Str)})
+
+;; utility
 ;; sec 6 digits
 (defn sec-str []
   (let [sec (str (System/currentTimeMillis))
@@ -31,6 +57,49 @@
     (catch [:status 400] {:keys [request-time headers body :as e]}
       (log/warn (str e))
       (bad-request body))))
+
+;; --- auth functions ---
+(defn create-account [user]
+  "create Authy account and account table record"
+  (let [{:keys [email user_name phone_number password]} user
+        {:keys [status body]} (auth/new-user {:email email
+                                              :cellphone phone_number
+                                              :country_code "81"})]
+    (if-let [account_id (get-in body [:user :id])]
+      (try+
+        (db/create-accounts! {:user_id email
+                              :password (h/encrypt password)
+                              :user_name user_name
+                              :account_id account_id
+                              :phone_number phone_number
+                              :balance 100000})
+        {:account_id (str account_id)}
+        (catch java.sql.SQLException e
+          (log/warn (:throwable &throw-context) "sql error")
+          {:errors {:message "user exists"}}))
+      body)))
+
+(defn login [{:keys [email password]}]
+  "verify user credential, send sms with authy"
+  (let [user (first (db/get-account-by-user {:user_id email}))
+        verify (h/check password (:password user))]
+    (if (not-empty user)
+      (if verify
+        (do
+          (auth/send-sms (:account_id user) false)
+          {:account_id (:account_id user)})
+        {:errors {:message "unmatch password" :type :unmatch}})
+      {:errors {:message "no user" :type :nouser}})))
+
+(defn verify [{:keys [account_id token]}]
+  "verity 2FO token and issue session token"
+  (let [res (auth/verify-token account_id token)]
+    (log/debug (str res))
+    (if (get-in res [:body :success])
+      (let [auth_token (crypto.random/base64 32)]
+        (db/new-token! {:token auth_token})
+        {:auth_token auth_token})
+      (:body res))))
 
 ;; --- account functions ---
 
@@ -68,8 +137,43 @@
       :form-params   [access_token :- s/Str]
       :summary      "OAuthのコールバック用。開発用"
       (do
-        (log/info (str "/auth: token=" access_token))
+        (log/debug (str "/auth: token=" access_token))
         (ok {:access_token access_token})))
+
+    (POST "/auth/create" []
+      :tags ["auth"]
+      :return   {:account_id s/Str}
+      :body [user User]
+      :summary  "新規ユーザー作成"
+      (let [res (create-account user)]
+        (log/debug (str user))
+        (if-not (:errors res)
+          (ok res)
+          (bad-request res))))
+
+    (POST "/auth/login" []
+      :tags ["auth"]
+      :return   {:account_id s/Str}
+      :body [user {:email s/Str :password s/Str}]
+      :summary "ログイン"
+      (let [res (login user)]
+        (log/debug (str user))
+        (if-not (:errors res)
+          (ok res)
+          (case (get-in res [:errors :type])
+            :unmatch (bad-request res)
+            :nouser (not-found res)))))
+
+    (POST "/auth/verity" []
+      :tags ["auth"]
+      :return   {:auth_token s/Str}
+      :body [user {:account_id s/Str :token s/Str}]
+      :summary "二要素認証確認"
+      (let [res (verify user)]
+        (log/debug (str user))
+        (if-not (:errors res)
+          (ok res)
+          (unauthorized res))))
 
     (GET "/checky" []
       :tags ["user" "checky"]

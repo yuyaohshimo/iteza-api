@@ -8,25 +8,6 @@
 ;; Api endpoint
 (def apicontext (str (:api-endpoint env) "/v1"))
 
-
-;; account schema
-(s/defschema Account {(s/optional-key :id) Long
-                      :user_id s/Str
-                      :user_name s/Str
-                      :phone_number s/Str
-                      :account_id s/Str
-                      :balance Long})
-
-;; check schema
-(s/defschema Check {:id s/Str
-                    :account_id s/Str
-                    :token s/Str
-                    :acc_token s/Str
-                    :amount Long
-                    :status s/Int
-                    :dest (s/maybe s/Str)
-                    :dest_acc_id (s/maybe s/Str)})
-
 ;; restructure bank user
 (defn restructure-user [user]
   (let [accounts (:my_accounts user)

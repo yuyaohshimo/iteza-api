@@ -31,10 +31,12 @@
                  [luminus-log4j "0.1.2"]
                  [http-kit "2.1.18"]
                  [slingshot "0.12.2"]
-                 [twilio-api "1.0.1"]]
+                 [twilio-api "1.0.1"]
+                 [buddy/buddy-hashers "0.11.0"]
+                 [crypto-random "1.2.0"]]
 
   :min-lein-version "2.0.0"
-  :uberjar-name "mycheck.jar"
+  :uberjar-name "checky.jar"
   :jvm-opts ["-server"]
   :source-paths ["src/clj"]
   :resource-paths ["resources"]

@@ -49,4 +49,7 @@ WHERE dest = :dest and status = :status
 
 -- name: delete-check!
 -- for debug
-DELETE from checks WHERE id = :id;
+DELETE FROM checks WHERE id = :id;
+
+-- name: purge-checks!
+DELETE FROM checks;
