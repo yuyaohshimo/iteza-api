@@ -1,485 +1,437 @@
 #include <iostream>
 #include <list>
 #include <opencv2/opencv.hpp>
-#include <tesseract/baseapi.h>
 #include <sys/stat.h>
+#include <tesseract/baseapi.h>
 
+using namespace cv;
 
-namespace {
+const int AREA_THRETHOLD_MIN = 500;
+const int AREA_THRETHOLD_MAX = 15000;
+const int NEAR_BY_INTERSECTIONS_THRETHOLD = 80;
+const int NEAR_BY_COUT_THRETHOLD_RATE = 80;
+
 
 // 正規化画像のサイズ
 const int NORMALIZED_WIDTH = 3840;
 const int NORMALIZED_HEIGHT = 2160;
 
-// 検出面積のスレッショールド
-const int AREA_THRETHOLD_MIN = 1200;
-const int AREA_THRETHOLD_MAX = 15000;
-const int SQUARE_DIFF_THRETHOLD = 15;
-
-// マーカの中心位置
 const int MARKER_LEFT_CENTER = 200;
 const int MARKER_RIGHT_CENTER = NORMALIZED_WIDTH - MARKER_LEFT_CENTER;
 const int MARKER_TOP_CENTER = 180;
 const int MARKER_BOTTOM_CENTER = NORMALIZED_HEIGHT - MARKER_TOP_CENTER;
-// 傾きによるマーカずれの限界(大きすぎると、誤検知につながる)
-const int MARKER_DIFF_RANGE_X = 300;
-const int MARKER_DIFF_RANGE_Y = 1000;
 
-const int TOPLEFT_MARKER_DETECT_RANGE = 20;
+// メディアンフィルタのサイズ
+const int MEDIAN_BLUR_SIZE = 3;
+// HSVの設定
+const int HSV_H_CENTER = 130;
+const int HSV_H_RANGE = 30;
+const int HSV_S_MIN = 100;
+const int HSV_S_MAX = 255;
+const int HSV_V_MIN = 0;
+const int HSV_V_MAX = 200;
 
-// offset
+const int LINE_SIZE_MAX = 150;
 
-// 画像切り出しにつかう変数
+const int LINE_THREATHOLD_MIN = 150;
+const int LINE_THREATHOLD_STEP = 20;
+
+const int INTERSECTION_VOTE_RANGE = 5;
+
 // マーカからのオフセット
-const float FACEVALUE_OFFSET_X = 500;
-const float FACEVALUE_OFFSET_Y = 550;
-const float FACEVALUE_WIDTH = 1500;
-const float FACEVALUE_HEIGHT = 300;
-//const float FACEVALUE_OFFSET_WIDTH = 200;
-//const float FACEVALUE_OFFSET_HEIGHT = 60;
-
-// マーカからのオフセット
-const float ID_OFFSET_X = 500;
-const float ID_OFFSET_Y = 1480;
+const float ID_OFFSET_X = 450;
+const float ID_OFFSET_Y = 1450;
 const float ID_WIDTH = 1500;
-const float ID_HEIGHT = 200;
+const float ID_HEIGHT = 250;
+
+Point2f calcIntersection(double rho1, double theta1, double rho2, double theta2 );
+
+bool isNearByNode(const double x, const double y, std::vector<Point2f> &intersections);
+double pointToLineDistance(Point2f p, double rho, double theta);
+void writeLine(Mat mat, Vec2f line, const Scalar& color, int thickness);
+
+typedef std::pair<int, int> ass_arr;
+bool sort_greater(const ass_arr& left,const ass_arr& right){
+    return left.second > right.second;
 }
 
-using namespace std;
-
-
+inline void debugWrite(const std::string &outDir, const std::string &name, const Mat image) {
+	imwrite(outDir + "/" + name + ".png", image);
+}
 
 int main(int argc, char **argv) {
-	cv::Mat srcImage = cv::imread(argv[1]);
 
-	if (srcImage.rows > srcImage.cols) {
-		// 縦画像は回転
-		cv::flip(srcImage.t(), srcImage, 0);
-	}
-
-	string infile = argv[1];
+	Mat srcImage = imread(argv[1]);
+	Mat dest;
+//	Mat dest = srcImage.clone();
+	std::string infile = argv[1];
 	infile = infile.substr(infile.find_last_of("/") + 1, infile.length());
-	string dir = "out/";
-	dir += infile;
-	mkdir(dir.c_str(), 0777);
-	dir += "/";
+	std::string outDir;
+	outDir += "out";
+	outDir += "/";
+	outDir += infile;
 
-	// サイズを横幅で正規化
-	cv::Mat image(srcImage.rows * NORMALIZED_WIDTH/srcImage.cols, NORMALIZED_WIDTH, srcImage.type());
-	cv::resize(srcImage, image, image.size(), cv::INTER_CUBIC);
+	mkdir(outDir.c_str(), 0777);
+    debugWrite(outDir, "src", srcImage);
 
-//	cerr << "end resize" << endl;
+	Mat hsv;
+	cvtColor(srcImage, hsv, CV_BGR2HSV);
 
-	cv::Mat gray;
-	//
-	cv::cvtColor(image, gray, CV_BGR2GRAY);
+	Mat blur;
+//	medianBlur(hsv, blur, MEDIAN_BLUR_SIZE);
+	hsv.copyTo(blur);
 
-//	cerr << "end gray" << endl;
-//	cv::imwrite(dir + "/gray.png", gray);
+	Mat mask;
+	inRange(blur, Scalar(HSV_H_CENTER - HSV_H_RANGE, HSV_S_MIN, HSV_V_MIN)
+			, Scalar(HSV_H_CENTER + HSV_H_RANGE, HSV_S_MAX, HSV_V_MAX), mask);
+//	inRange(blur, Scalar(100 - 30, 100, 0), Scalar(100 + 30, 255, 255), mask);
 
-	// ガウシアンフィルタでノイズ除去
-	cv::Mat blur;
-	cv::GaussianBlur(gray, blur, cv::Size(5,5), 10, 10);
+	debugWrite(outDir, "filtered", mask);
+	srcImage.copyTo(dest, mask);
 
-//	cerr << "end blur" << endl;
-//    cv::imwrite(dir + "/blur.png", blur);
+	// 背景白にして、検出率アップ
+	Mat masked(dest.rows, dest.cols, dest.type(), Scalar(255, 255, 255));
+	dest.copyTo(masked, mask);
 
-	cv::Mat bin;
-	cv::adaptiveThreshold(
-			blur,
-			bin,
-			50,
-			cv::ADAPTIVE_THRESH_MEAN_C,
-			cv::THRESH_BINARY,
-			11,
-			2);
-//	cv::threshold(blur, bin, 200.0, 500.0, cv::THRESH_BINARY | cv::THRESH_OTSU);
-//			gray, bin, 0.0, 255.0, cv::THRESH_BINARY | cv::THRESH_OTSU);
-    // ネガポジ変換
-//    bin = ~bin;
+    Mat gray;
+	cvtColor(dest, gray, CV_BGR2GRAY);
 
-//	cerr << "end binarize" << endl;
+	Mat canny;
+	Canny(gray, canny, 10, 10);
+	debugWrite(outDir, "canny", canny);
+	std::vector<Vec2f> lines;
 
-	cv::Mat labelImg;
-	cv::Mat stats;
-    cv::Mat centroids;
-    cv::Mat dest(bin.size(), CV_8UC3);
-
-    cv::imwrite(dir + "/bin.png", bin);
-
-    int labelCount = cv::connectedComponentsWithStats(bin, labelImg, stats, centroids);
-
-//    cerr << "end connect" << endl;
-
-    std::vector<cv::Vec3b> colors(labelCount);
-    colors[0] = cv::Vec3b(0, 0, 0);
-    for (int i = 1; i < labelCount; ++i) {
-        colors[i] = cv::Vec3b((rand() & 255), (rand() & 255), (rand() & 255));
-    }
-
-    vector<cv::Point2f> markerCenterPoints;
-
-    // for debug
-    cv::Mat targetsInImage = image.clone();
-    cv::Mat filteredImage = image.clone();
-
-    for (int i = 1; i < labelCount; ++i) {
-        int *param = stats.ptr<int>(i);
-//        double *center = centroids.ptr<double>(i);
-
-        int x = param[cv::CC_STAT_LEFT];
-        int y = param[cv::CC_STAT_TOP];
-//        int centerx = center[0];
-//        int centery = center[1];
-        int height = param[cv::CC_STAT_HEIGHT];
-        int width = param[cv::CC_STAT_WIDTH];
-    	int area = stats.ptr<int>(i)[cv::CC_STAT_AREA];
-
-//        cerr << "target , x, y\t" << area << "\t" << x << "\t" << y << endl;
-
-
-//    	if (area > AREA_THRETHOLD_MIN && area < AREA_THRETHOLD_MAX
-//    			&& abs(width - height) < 20) {
-//    	}
-		// 面積小さいの無視 & 正方形じゃないの無視
-    	if (area > AREA_THRETHOLD_MIN && area < AREA_THRETHOLD_MAX
-    			&& abs(width - height) < SQUARE_DIFF_THRETHOLD) {
-	        cv::rectangle(targetsInImage, cv::Rect(x, y, width, height), cv::Scalar(0, 255, 0), 2);
-
-			if(((abs(x - MARKER_LEFT_CENTER) < MARKER_DIFF_RANGE_X)
-						|| (abs(x - MARKER_RIGHT_CENTER) < MARKER_DIFF_RANGE_X))
-				&&((abs(y - MARKER_TOP_CENTER) < MARKER_DIFF_RANGE_Y)
-						|| (abs(y - MARKER_BOTTOM_CENTER) < MARKER_DIFF_RANGE_Y))
-				) {
-
-//				markerCenterPoints.push_back(cv::Point2f(centerx, centery));
-				cv::Point2f pos(x + width / 2, y + height / 2);
-				if (pos.x > NORMALIZED_WIDTH) {
-					pos.x = NORMALIZED_WIDTH;
-				}
-				if (pos.y > NORMALIZED_HEIGHT) {
-					pos.y = NORMALIZED_HEIGHT;
-				}
-
-				markerCenterPoints.push_back(cv::Point2f(x + width / 2, y + height / 2));
-
-
-				cv::rectangle(filteredImage, cv::Rect(x, y, width, height), cv::Scalar(0, 255, 0), 2);
-
-//				cerr << "founded area , x, y\t" << area << "\t" << centerx << "\t" << centery << endl;
-			}
-    	}
-    }
-
-    int maxMatch = 0;
-    vector<int> matched(markerCenterPoints.size());
-    int mostMatchIndex;
-
-    for (int i = 0; i < markerCenterPoints.size(); i++) {
-    	cv::Point2f pos = markerCenterPoints[i];
-    	for (int j = i + 1; j < markerCenterPoints.size(); j++) {
-
-    		cv::Point2f target = markerCenterPoints[j];
-    		if (abs(pos.x - target.x) < MARKER_DIFF_RANGE_X) {
-    			matched[i]++;
-    		}
-    		if (abs(pos.y - target.y) < MARKER_DIFF_RANGE_Y) {
-    			matched[i]++;
-    		}
-    	}
-
-    	if (maxMatch < matched[i]) {
-    		maxMatch = matched[i];
-    		mostMatchIndex = i;
-    	}
-    }
-
-    cerr << "markerCenterPoints = " << markerCenterPoints << endl;
-	// 4点以外がマッチした場合、一番マッチしたものを基準にして、縦のズレ、横のズレが一番小さいものを残す
-    // マーカがMUFJロゴにマッチしやすいための苦肉の策
-    if (markerCenterPoints.size() > 5) {
-
-    	cerr << "del marker" << endl;
-
-        cv::Point2f mostMatchPoint = markerCenterPoints[mostMatchIndex];
-        vector<cv::Point2f> tmp = markerCenterPoints;
-
-        cv::Point2f xMatchPoint(INT_MAX, INT_MAX);
-        cv::Point2f yMatchPoint(INT_MAX, INT_MAX);
-        int xMatchIndex;
-        int yMatchIndex;
-
-        // 一番マッチしたところは消す
-        tmp.erase(tmp.begin() + mostMatchIndex);
-        // 一番マッチしたとこと同じくらいの点を2点探す
-        for (int i = 0; i < tmp.size(); i++) {
-        	if (abs(mostMatchPoint.x - tmp[i].x) < abs(mostMatchPoint.x - xMatchPoint.x)) {
-        		xMatchPoint = tmp[i];
-        		xMatchIndex = i;
-        	}
-        	if (abs(mostMatchPoint.y - tmp[i].y) < abs(mostMatchPoint.y - yMatchPoint.x)) {
-        		yMatchPoint = tmp[i];
-        		yMatchIndex = i;
-        	}
-        }
-
-//        if (xMatchIndex == yMatchIndex) {
-        	// 左上マーカなので、いったん消す
-        	tmp.erase(tmp.begin() + yMatchIndex);
-
-        	xMatchPoint = cv::Point2f(INT_MAX, INT_MAX);
-        	yMatchPoint = cv::Point2f(INT_MAX, INT_MAX);
-        	// 再度x,yがマッチする場所を探す
-            for (int i = 0; i < tmp.size(); i++) {
-            	if (abs(mostMatchPoint.x - tmp[i].x) < abs(mostMatchPoint.x - xMatchPoint.x)) {
-            		xMatchPoint = tmp[i];
-            		xMatchIndex = i;
-            	}
-            }
-
-            // xで一番マッチした点は消す
-			tmp.erase(tmp.begin() + xMatchIndex);
-
-            for (int i = 0; i < tmp.size(); i++) {
-				if (abs(mostMatchPoint.y - tmp[i].y) < abs(mostMatchPoint.y - yMatchPoint.y)) {
-					yMatchPoint = tmp[i];
-					yMatchIndex = i;
-				}
-            }
-            // yで一番マッチした点は消す
-
-			tmp.erase(tmp.begin() + yMatchIndex);
-
-            cv::Point2f diagonalNodePoint(yMatchPoint.x, xMatchPoint.y);
-            int xyDiff = INT_MAX;
-            int lastNode = -1;
-            // 最後に一番マッチした点の対角にある点を消す
-            for (int i = 0; i < tmp.size(); i++) {
-            	int diff = abs(diagonalNodePoint.x - tmp[i].x) + abs(diagonalNodePoint.y - tmp[i].y);
-            	if (xyDiff > diff) {
-            		lastNode = i;
-            		xyDiff = diff;
-            	}
-            }
-            tmp.erase(tmp.begin() + lastNode);
-
-        	cerr << "del tmp" << tmp << endl;
-
-        	// tmpに残っているものはゴミなので、markerCenterPointsから消す
-            for (int i = 0; i < tmp.size(); i++) {
-            	cv::Point2f target = tmp[i];
-            	bool found = false;
-
-            	for (int j = 0; j < markerCenterPoints.size(); j++) {
-            		if (target.x == markerCenterPoints[j].x
-            				&& target.y == markerCenterPoints[j].y) {
-            			markerCenterPoints.erase(markerCenterPoints.begin() + j);
-            			found = true;
-            			break;
-            		}
-            		if (found) {
-            			break;
-            		}
-            	}
-            }
-        	cerr << "del tmp end " << markerCenterPoints << endl;
-//        } else {
-//        	// この場合は、左上マーカの検出に失敗していると思われるので、あきらめる。
-//        }
-    }
-
-    for (int i = 0; i < markerCenterPoints.size(); i++) {
-        cv::circle(targetsInImage, markerCenterPoints[i], 10, cv::Scalar(0, 255, 0), 10);
-    }
-//    cerr << "markerCenterPoints find end" << endl;
-//    cerr << "found size = " << markerCenterPoints.size() << endl;
-//    cerr << "markerCenterPoints = " << markerCenterPoints << endl;
-
-    cv::imwrite(dir + "/targets_in_image.png", targetsInImage);
-    cv::imwrite(dir + "/filteredImage.png", filteredImage);
-
-    if (markerCenterPoints.size() != 5 && markerCenterPoints.size() != 4) {
-    	cerr << "marker search failed" << endl;
-    	cerr << "markerCenterPoints.size:" << markerCenterPoints.size() << endl;
-    	return 1;
-    }
-
-	cv::Point2f leftTop;
-	// 左上を検出(左上か右下にあるはず)
-	bool found = false;
-	for (int i = 0; i < markerCenterPoints.size(); i++) {
-		for (int j = i + 1; j < markerCenterPoints.size(); j++) {
-			if (abs(markerCenterPoints[i].x - markerCenterPoints[j].x) < TOPLEFT_MARKER_DETECT_RANGE
-					&& abs(markerCenterPoints[i].y - markerCenterPoints[j].y) < TOPLEFT_MARKER_DETECT_RANGE) {
-				leftTop = markerCenterPoints[i];
-				found = true;
-				break;
-			}
-		}
-		if (found) {
-			// 2つある左上の中心を削除
-			markerCenterPoints.erase(markerCenterPoints.begin() + i);
+	// 検出される線の量を調節
+	for (int i = 0; i < 100; i++) {
+		HoughLines(canny, lines, 1, CV_PI / 180.0, LINE_THREATHOLD_MIN + LINE_THREATHOLD_STEP * i);
+		if (lines.size() < LINE_SIZE_MAX) {
 			break;
 		}
 	}
 
-    if (markerCenterPoints.size() > 4) {
-    	// 見つからなかったら、左上決めうち
-    	for (int i = 0; i < markerCenterPoints.size(); i++) {
-    		for (int j = i + 1; j < markerCenterPoints.size(); j++) {
-    			if (abs(markerCenterPoints[i].x - MARKER_LEFT_CENTER) < MARKER_DIFF_RANGE_X
-    					&& abs(markerCenterPoints[i].y - MARKER_TOP_CENTER) < MARKER_DIFF_RANGE_Y) {
-    				leftTop = markerCenterPoints[i];
-    				found = true;
+	if (lines.size() >= LINE_SIZE_MAX) {
+		std::cerr << "lines too big "<<std::endl;
+		return 1;
+	}
+
+	for (std::vector<Vec2f>::iterator it = lines.begin(); it != lines.end(); ++it) {
+
+		writeLine(dest, *it, Scalar(0, 255, 0), 3);
+		writeLine(canny, *it, Scalar(0, 255, 0), 3);
+	}
+	std::vector<Point2f> intersections;
+
+	for (std::vector<Vec2f>::iterator it1 = lines.begin(); it1 != lines.end(); ++it1) {
+		double rho1 = (*it1)[0];
+		double theta1 = (*it1)[1];
+
+		for (std::vector<Vec2f>::iterator it2 = it1; it2 != lines.end(); ++it2) {
+
+			double rho2 = (*it2)[0];
+			double theta2 = (*it2)[1];
+
+			if (abs(theta1 - theta2) < (60 * CV_PI / 180)) {
+				// 角度がゆるいのは交点として認めません
+				continue;
+			}
+
+			Point2f p = calcIntersection(rho1, theta1, rho2, theta2);
+
+			// 枠外の交点は排除
+			if (p.x > dest.cols || p.x < 0.0
+					|| p.y > dest.rows || p.y < 0.0) {
+				continue;
+			}
+
+//			std::cerr << "theta1 = " << theta1 << std::endl;
+			intersections.push_back(p);
+
+			circle(dest, p, 10, Scalar(255, 0, 0), 5);
+		}
+	}
+    // 左上を取得
+
+    Point2f leftTopPos;
+    Point2f rightBottomPos;
+    int leftTopLen = INT_MAX;
+    int rightBottomLen = 0;
+
+    // TODO 頂点候補の選択はもっと綺麗にできるかもしれない。
+    for (int i = 0; i < intersections.size(); i++) {
+    	Point2f pos1 = intersections[i];
+    	int len = sqrt(pow(pos1.x, 2) + pow(pos1.y, 2));
+    	int nearByPoints = 0;
+    	if (len < leftTopLen) {
+    		for (int j = 0; j < intersections.size(); j++) {
+    			Point2f pos2 = intersections[j];
+    			// 縦横xxピクセルに5個以上頂点がなければ、誤検出とする
+
+    			if (abs(pos1.x - pos2.x) < INTERSECTION_VOTE_RANGE &&
+    					abs(pos1.y - pos2.y) < INTERSECTION_VOTE_RANGE) {
+    				nearByPoints++;
+    			}
+    			if (nearByPoints >= 5) {
     				break;
     			}
     		}
-    		if (found) {
-    			// 2つある左上の中心を削除
-    			markerCenterPoints.erase(markerCenterPoints.begin() + i);
-    			break;
+    		if (nearByPoints >= 5) {
+				leftTopPos = pos1;
+				leftTopLen = len;
+    		}
+    	}
+
+    	if (len > rightBottomLen) {
+    		for (int j = 0; j < intersections.size(); j++) {
+    			Point2f pos2 = intersections[j];
+    			// 縦横xxピクセルに5個以上頂点がなければ、誤検出とする
+
+    			if (abs(pos1.x - pos2.x) < INTERSECTION_VOTE_RANGE &&
+    					abs(pos1.y - pos2.y) < INTERSECTION_VOTE_RANGE) {
+    				nearByPoints++;
+    			}
+    			if (nearByPoints >= 5) {
+    				break;
+    			}
+    		}
+    		if (nearByPoints >= 5) {
+				rightBottomPos = pos1;
+				rightBottomLen = len;
     		}
     	}
     }
 
-	vector<cv::Point2f> v(markerCenterPoints.begin(),
-			markerCenterPoints.end());
+    if (leftTopLen == INT_MAX || rightBottomLen == 0) {
+    	std::cerr << "can't find left top or right bottom.." << std::endl;
+    	std::cerr << "intersections = " << intersections.size() << std::endl;
+    	std::cerr << "lines = " << lines.size() << std::endl;
+    	debugWrite(outDir, "dest", dest);
+    	return 1;
+    }
+    cv::Point2f prevEdge[4];
 
-	cv::Point2f prevEdge[4];
-	for (int i = 0; i < markerCenterPoints.size(); i++) {
-		if (abs(markerCenterPoints[i].x - MARKER_LEFT_CENTER) < MARKER_DIFF_RANGE_X) {
-			if (abs(markerCenterPoints[i].y - MARKER_TOP_CENTER) < MARKER_DIFF_RANGE_Y) {
-				prevEdge[0] = v[i]; // 左上
-			} else {
-				prevEdge[1] = v[i]; // 左下
+    prevEdge[0] = leftTopPos;
+	prevEdge[2] = rightBottomPos;
+    // 上下、左右の線を選択
+	Vec2f leftVLine;
+	Vec2f topHLine;
+	Vec2f rightVLine;
+	Vec2f bottomHLine;
+	double leftVLineDist = INFINITY;
+	double topHLineDist = INFINITY;
+	double rightVLineDist = INFINITY;
+	double bottomHLineDist = INFINITY;
+
+
+	// 左上と右下に近い線を探す
+	for (int i = 0; i < lines.size(); i++) {
+		double rho = lines[i][0];
+		double theta = lines[i][1];
+
+		writeLine(dest, lines[i], Scalar(255,255,0), 2);
+
+		double dist1 = pointToLineDistance(prevEdge[0], rho, theta);
+		double dist2 = pointToLineDistance(prevEdge[2], rho, theta);
+
+		bool isVLine = abs(sin(theta)) < (1/ sqrt(2));
+
+		if (isVLine) {
+			// 縦線
+			if (dist1 < leftVLineDist) {
+				leftVLineDist = dist1;
+				leftVLine = lines[i];
+			}
+			if (dist2 < rightVLineDist) {
+				rightVLineDist = dist2;
+				rightVLine = lines[i];
 			}
 		} else {
-			if (abs(markerCenterPoints[i].y - MARKER_TOP_CENTER) < MARKER_DIFF_RANGE_Y) {
-				prevEdge[3] = v[i]; // 右上
-			} else {
-				prevEdge[2] = v[i]; // 右下
+			// 横線
+			if (dist1 < topHLineDist) {
+				topHLineDist = dist1;
+				topHLine = lines[i];
+			}
+			if (dist2 < bottomHLineDist) {
+				bottomHLineDist = dist2;
+				bottomHLine = lines[i];
 			}
 		}
 	}
+	writeLine(dest, leftVLine, Scalar(255, 255, 255), 20);
+	writeLine(dest, topHLine, Scalar(255, 255, 255), 5);
+	writeLine(dest, rightVLine, Scalar(255, 255, 255), 5);
+	writeLine(dest, bottomHLine, Scalar(255, 255, 255), 5);
 
-	// 左上の検出が右下だった場合
-	// TODO: 全体見直したら、たぶんもっとエレガントに書けるな・・・
+	double rightTopDist = INFINITY;
+	double leftBottomDist = INFINITY;
 
-	if (found && abs(leftTop.x - MARKER_LEFT_CENTER) > MARKER_DIFF_RANGE_X) {
-		// 元の画像を180度回転しておく
+	for (int i = 0; i < intersections.size(); i++) {
+		if (intersections[i] == prevEdge[0] || intersections[i] == prevEdge[2]) {
+			continue;
+		}
 
-		cv::flip(image, image, -1);
-	    cv::imwrite(dir + "/fliped.png", image);
-
-		// 入れ替え
-		cv::Point2f tmp = prevEdge[0];
-		prevEdge[0] = prevEdge[2];
-		tmp = prevEdge[2] = tmp;
-		tmp = prevEdge[1];
-		prevEdge[1] = prevEdge[3];
-		prevEdge[3] = tmp;
-
-		// 座標の反転
-		prevEdge[0].x = NORMALIZED_WIDTH - prevEdge[0].x;
-		prevEdge[0].y = NORMALIZED_HEIGHT - prevEdge[0].y;
-		prevEdge[1].x = NORMALIZED_WIDTH - prevEdge[1].x;
-		prevEdge[1].y = NORMALIZED_HEIGHT - prevEdge[1].y;
-		prevEdge[2].x = NORMALIZED_WIDTH - prevEdge[2].x;
-		prevEdge[2].y = NORMALIZED_HEIGHT - prevEdge[2].y;
-		prevEdge[3].x = NORMALIZED_WIDTH - prevEdge[3].x;
-		prevEdge[3].y = NORMALIZED_HEIGHT - prevEdge[3].y;
-
-		leftTop = prevEdge[0];
+		double topDist = pointToLineDistance(intersections[i], topHLine[0], topHLine[1]);
+		double leftDist = pointToLineDistance(intersections[i], leftVLine[0], leftVLine[1]);
+		double bottomDist = pointToLineDistance(intersections[i], bottomHLine[0], bottomHLine[1]);
+		double rightDist = pointToLineDistance(intersections[i], rightVLine[0], rightVLine[1]);
+		if (topDist + rightDist < rightTopDist) {
+			// 右上候補
+			prevEdge[3] = intersections[i];
+			rightTopDist = topDist + rightDist;
+		}
+		if (bottomDist + leftDist < leftBottomDist) {
+			// 左下候補
+			prevEdge[1] = intersections[i];
+			leftBottomDist = bottomDist + leftDist;
+		}
 	}
+//	std::cerr << "rightTopDist " << rightTopDist << std::endl;
+//	std::cerr << "leftBottomDist " << leftBottomDist << std::endl;
+
+	float imageResizeRate = (float)srcImage.cols / NORMALIZED_WIDTH;
 
 	cv::Point2f postEdge[4];
-	postEdge[0] = cv::Point2f(MARKER_LEFT_CENTER, MARKER_TOP_CENTER); // 左上
-	postEdge[1] = cv::Point2f(MARKER_LEFT_CENTER, MARKER_BOTTOM_CENTER); // 左下
-	postEdge[2] = cv::Point2f(MARKER_RIGHT_CENTER, MARKER_BOTTOM_CENTER); // 右下
-	postEdge[3] = cv::Point2f(MARKER_RIGHT_CENTER, MARKER_TOP_CENTER); // 右上
+	postEdge[0] = cv::Point2f(MARKER_LEFT_CENTER, MARKER_TOP_CENTER) * imageResizeRate; // 左上
+	postEdge[1] = cv::Point2f(MARKER_LEFT_CENTER, MARKER_BOTTOM_CENTER) * imageResizeRate; // 左下
+	postEdge[2] = cv::Point2f(MARKER_RIGHT_CENTER, MARKER_BOTTOM_CENTER) * imageResizeRate; // 右下
+	postEdge[3] = cv::Point2f(MARKER_RIGHT_CENTER, MARKER_TOP_CENTER) * imageResizeRate; // 右上
 
-//	cerr << "prevEdge[0] " << prevEdge[0] << endl;
-//	cerr << "prevEdge[1] " << prevEdge[1] << endl;
-//	cerr << "prevEdge[2] " << prevEdge[2] << endl;
-//	cerr << "prevEdge[3] " << prevEdge[3] << endl;
-//	cerr << "postEdge[0] " << postEdge[0] << endl;
-//	cerr << "postEdge[1] " << postEdge[1] << endl;
-//	cerr << "postEdge[2] " << postEdge[2] << endl;
-//	cerr << "postEdge[3] " << postEdge[3] << endl;
+	circle(dest, prevEdge[0], 10, Scalar(0, 0, 255), 5);
+	circle(dest, prevEdge[1], 10, Scalar(0, 0, 255), 5);
+	circle(dest, prevEdge[2], 10, Scalar(0, 0, 255), 5);
+	circle(dest, prevEdge[3], 10, Scalar(0, 0, 255), 5);
+//	std::cerr << "prevEdge[0] = " << prevEdge[0] << std::endl;
+//	std::cerr << "prevEdge[1] = " << prevEdge[1] << std::endl;
+//	std::cerr << "prevEdge[2] = " << prevEdge[2] << std::endl;
+//	std::cerr << "prevEdge[3] = " << prevEdge[3] << std::endl;
+//
+	// TODO slack.jpg が検出できるように
+//	std::cerr << "postEdge[0] = " << postEdge[0] << std::endl;
+//	std::cerr << "postEdge[1] = " << postEdge[1] << std::endl;
+//	std::cerr << "postEdge[2] = " << postEdge[2] << std::endl;
+//	std::cerr << "postEdge[3] = " << postEdge[3] << std::endl;
+
+	debugWrite(outDir, "masked", masked);
+	debugWrite(outDir, "dest", dest);
 
 	cv::Mat warpMatrix = cv::getPerspectiveTransform(prevEdge, postEdge);
-
 	// 位置補正後の画像
-	cv::Mat normarized(image.rows, image.cols, image.type());
-	cv::warpPerspective(image, normarized, warpMatrix, normarized.size());
+	cv::Mat normarized(masked.rows, masked.cols, masked.type());
+	cv::warpPerspective(masked, normarized, warpMatrix, normarized.size());
 
-    cv::imwrite(dir + "/normalized.png", normarized);
+	debugWrite(outDir, "normalized", normarized);
 
+//	std::cerr << "srcImage.cols:" << srcImage.cols << std::endl;
+//	std::cerr << "srcImage.rows:" << srcImage.rows << std::endl;
+//	std::cerr << "postEdge[0].x * imageResizeRate:" << postEdge[0].x * imageResizeRate << std::endl;
+//	std::cerr << "postEdge[0].y * imageResizeRate:" << postEdge[0].y * imageResizeRate << std::endl;
+//	std::cerr << "(postEdge[2].x - postEdge[0].x) * imageResizeRate:" << (postEdge[2].x - postEdge[0].x) * imageResizeRate << std::endl;
+//	std::cerr << "(postEdge[2].y - postEdge[0].y) * imageResizeRate:" << (postEdge[2].y - postEdge[0].y) * imageResizeRate << std::endl;
 	// マーカ内のみ切取り
 	cv::Mat inMarker(normarized,
 			cv::Rect(
-					postEdge[0].x,
-					postEdge[0].y,
-					postEdge[2].x - postEdge[0].x,
-					postEdge[2].y - postEdge[0].y));
-    cv::imwrite(dir + "/marker-rect.png", inMarker);
+					postEdge[0].x ,
+					postEdge[0].y ,
+					(postEdge[2].x - postEdge[0].x) ,
+					(postEdge[2].y - postEdge[0].y) ));
+	resize(normarized, normarized, normarized.size(), 1 / imageResizeRate, 1 / imageResizeRate);
 
-	// 額面
-	cv::Mat faceValue(inMarker,
-			cv::Rect(
-			FACEVALUE_OFFSET_X,
-			FACEVALUE_OFFSET_Y,
-			FACEVALUE_WIDTH,
-			FACEVALUE_HEIGHT));
-	cv::cvtColor(faceValue, faceValue, CV_BGR2GRAY);
-    cv::GaussianBlur(faceValue, faceValue,cv::Size(5,5), 10, 10);
-	cv::threshold(faceValue, faceValue, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU);
-
-    cv::imwrite(dir + "/facevalue.png", faceValue);
+	debugWrite(outDir, "merker-rect", inMarker);
 
 	// ID
 	cv::Mat id(inMarker,
 			cv::Rect(
-					ID_OFFSET_X,
-					ID_OFFSET_Y,
-			ID_WIDTH,
-			ID_HEIGHT));
+					ID_OFFSET_X * imageResizeRate,
+					ID_OFFSET_Y * imageResizeRate,
+			ID_WIDTH * imageResizeRate,
+			ID_HEIGHT * imageResizeRate));
 
-	cv::cvtColor(id, id, CV_BGR2GRAY);
-
-    cv::GaussianBlur(id, id,cv::Size(5,5), 10, 10);
-
-	cv::threshold(id, id, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU);
-
-    cv::imwrite(dir + "/id.png", id);
-
-//    cv::imshow("edges", faceValue);
-//    cv::waitKey(0);
-    // tesseract
+	debugWrite(outDir, "id", id);
 	tesseract::TessBaseAPI tess;
 	tess.Init(NULL, "eng", tesseract::OEM_DEFAULT);
-	tess.SetImage((uchar*)faceValue.data, faceValue.size().width, faceValue.size().height, faceValue.channels(), faceValue.step1());
-	tess.Recognize(0);
-	string faceValueText = tess.GetUTF8Text();
-
 	tess.SetImage((uchar*)id.data, id.size().width, id.size().height, id.channels(), id.step1());
 	tess.Recognize(0);
-	string idText = tess.GetUTF8Text();
 
+	std::string value = tess.GetUTF8Text();
 
-	faceValueText.erase(faceValueText.find_last_not_of(" \n\r\t")+1);
-	idText.erase(idText.find_last_not_of(" \n\r\t")+1);
-//	cout << "faceValue:" << faceValueText << endl;
-	replace(idText.begin(), idText.end(), 'I', '1');
-	cout << idText << endl;
-
-//	cv::imshow("1", bin);
-//	cv::imshow("2", converted);
-//	cv::imshow("3", faceValue);
-//	cv::waitKey(0);
-
-	return 0;
+	std::cout << value << std::endl;
 }
 
+Point2f calcIntersection(double rho1, double theta1, double rho2, double theta2 ) {
+	double sin1 = sin(theta1);
+	double cos1 = cos(theta1);
+	double sin2 = sin(theta2);
+	double cos2 = cos(theta2);
+	double m = 1/(sin1 * cos2 - sin2 * cos1);
 
+	// thanx http://imura-lab.org/wp/wp-content/uploads/2015/10/hough-transform.pdf
+	Mat mat1 = (Mat_<double>(2, 2) << cos2, sin2, cos1, sin1);
+	Mat mat2 = (Mat_<double>(2, 1)
+			<< (-rho1 * cos1 + rho2 * cos2),
+				-rho1 * sin1 + rho2 * sin2);
+	Mat t = m * mat1 * mat2;
+	double t1 = t.at<double>(0, 0);
+	Point2f p(t1 * sin1 + rho1 * cos1, (-1) * t1 * cos1 + rho1 * sin1);
 
+	return p;
+}
+
+bool isNearByNode(const double x, const double y, std::vector<Point2f> &intersections) {
+	int count = 0;
+
+	for (int i = 0; i < intersections.size(); i++) {
+		// 本当に距離はかってもしゃーないので、x,yの差異で調べる
+		if (abs(x - intersections[i].x) < NEAR_BY_INTERSECTIONS_THRETHOLD
+				&& abs(y - intersections[i].y) < NEAR_BY_INTERSECTIONS_THRETHOLD) {
+			count++;
+			if (count >= intersections.size() / NEAR_BY_COUT_THRETHOLD_RATE) {
+//			if (count >= 3) {
+				return true;
+			}
+		}
+	}
+//	std::cerr << "pos" << x << ":" << y << " near by count = " << count << std::endl;
+	return false;
+}
+
+double inline abs(Vec2d vec) {
+	return sqrt(pow(vec[0], 2) + pow(vec[1], 2));
+}
+
+double pointToLineDistance(Point2f p, double rho, double theta) {
+
+	// thanx http://www.sousakuba.com/Programming/gs_dot_line_distance.html
+	double sin1 = sin(theta);
+	double cos1 = cos(theta);
+	double x0 = rho * cos1;
+	double y0 = rho * sin1;
+
+	// 線上のベクトル
+	Vec2d lineVec = Vec2d(x0 - 100000000 * sin1, y0 + 100000000 * cos1);
+
+	// 線上の点から点までのベクトル
+	Vec2d line2PointVec = Vec2d(x0 - p.x, y0 - p.y);
+
+	// 外積
+	double cross = (lineVec[0] * line2PointVec[1] - lineVec[1] * line2PointVec[0]);
+
+	// 面積 d (外積の絶対値)
+	double d = abs(cross);
+
+	double distance = abs(lineVec);
+
+	return d / distance;
+}
+
+void writeLine(Mat mat, Vec2f linevec, const Scalar& color, int thickness) {
+	float rho = linevec[0];
+	float theta = linevec[1];
+	double cosTheta = cos(theta);
+	double sinTheta = sin(theta);
+	double x0 = cosTheta * rho;
+	double y0 = sinTheta * rho;
+
+	Point pt1(x0 + 10000 * (-sinTheta), y0 + 10000 * cosTheta);
+	Point pt2(x0 - 10000 * (-sinTheta), y0 - 10000 * cosTheta);
+
+	line(mat, pt1, pt2, color, thickness);
+}
