@@ -4,13 +4,38 @@
             [schema.core :as s]
             [clojure.tools.logging :as log]
             [config.core :refer [env]]
-            [mycheck.db.core :as db])
+            [mycheck.db.core :as db]
+            [mycheck.api.authy :as auth]
+            [buddy.hashers :as h])
   (:use     [slingshot.slingshot :only [try+ throw+]]
-            [mycheck.api.twillio]
-            [mycheck.api.mufg]))
+            [mycheck.api.twillio]))
+
+;; schema
+;; user schema
+(s/defschema User {:email s/Str
+                   :user_name s/Str
+                   :phone_number s/Str
+                   :password s/Str})
+
+;; account schema
+(s/defschema Account {(s/optional-key :id) Long
+                      :user_id s/Str
+                      :user_name s/Str
+                      :phone_number s/Str
+                      :account_id s/Str
+                      :balance Long})
+
+;; check schema
+(s/defschema Check {:id s/Str
+                    :account_id s/Str
+                    :token s/Str
+                    :acc_token s/Str
+                    :amount Long
+                    :status s/Int
+                    :dest (s/maybe s/Str)
+                    :dest_acc_id (s/maybe s/Str)})
 
 ;; utility
-
 ;; sec 6 digits
 (defn sec-str []
   (let [sec (str (System/currentTimeMillis))
@@ -32,17 +57,65 @@
       (log/warn (str e))
       (bad-request body))))
 
+;; --- auth functions ---
+(defn create-account [user]
+  "create Authy account and account table record"
+  (let [{:keys [email user_name phone_number password]} user
+        {:keys [status body]} (auth/new-user {:email email
+                                              :cellphone phone_number
+                                              :country_code "81"})]
+    (if-let [account_id (get-in body [:user :id])]
+      (try+
+        (db/create-accounts! {:user_id email
+                              :password (h/encrypt password)
+                              :user_name user_name
+                              :account_id account_id
+                              :phone_number phone_number
+                              :balance 100000})
+        {:account_id (str account_id)}
+        (catch java.sql.SQLException e
+          (log/warn (:throwable &throw-context) "sql error")
+          {:errors {:message "user exists"}}))
+      body)))
+
+(defn login [{:keys [email password]}]
+  "verify user credential, send sms with authy"
+  (let [user (first (db/get-account-by-user {:user_id email}))
+        verify (h/check password (:password user))]
+    (if (not-empty user)
+      (if verify
+        (let [account_id (:account_id user)]
+          (db/delete-token! {:account_id account_id})
+          (db/new-token! {:account_id account_id})
+          (auth/send-sms account_id false)
+          {:account_id account_id})
+        {:errors {:message "unmatch password" :type :unmatch}})
+      {:errors {:message "no user" :type :nouser}})))
+
+(defn verify [{:keys [account_id token]}]
+  "verity 2FO token and issue session token"
+  (if-let [t (first (db/get-token {:account_id account_id}))]
+    (let [res (auth/verify-token account_id token)]
+      (log/debug (str res))
+      (if (get-in res [:body :success])
+        (let [auth_token (crypto.random/base64 32)]
+          (db/set-token! {:account_id account_id :token auth_token})
+          {:auth_token auth_token})
+        (:body res)))
+    {:errors {:message "not logged in"}}))
+
 ;; --- account functions ---
 
-;; check accounts exists and if there'nt, create.
-(defn check-and-create-account! [token]
-  (let [user (getuser token)]
-    (if-let [account (first (db/get-account-by-user {:user_id (user :user_id)}))]
-      account
-      ;; else
-      (do
-        (db/create-accounts! user)
-        user))))
+(defn get-account-by-accountid [account_id]
+  (-> (db/get-account-by-accid {:account_id account_id})
+    first
+    (dissoc :password)))
+
+;; get accounts
+(defn get-account-by-token [token]
+  (if-let [{account_id :account_id} (first (db/verify-token {:token token :hours 24}))]
+    (get-account-by-accountid account_id)
+    {:errors {:message "invalid token"}}))
 
 ;; --- check functions ---
 
@@ -60,7 +133,7 @@
              :spec "/swagger.json"
              :data {:info {:version "1.0.0"
                            :title "Checky API"
-                           :description "じぶん小切手 API"}}}}
+                           :description "Checky API"}}}}
   (context "/api" []
     (POST "/auth" []
       :tags ["debug"]
@@ -68,18 +141,54 @@
       :form-params   [access_token :- s/Str]
       :summary      "OAuthのコールバック用。開発用"
       (do
-        (log/info (str "/auth: token=" access_token))
+        (log/debug (str "/auth: token=" access_token))
         (ok {:access_token access_token})))
+
+    (POST "/auth/create" []
+      :tags ["auth"]
+      :return   {:account_id s/Str}
+      :body [user User]
+      :summary  "新規ユーザー作成"
+      (let [res (create-account user)]
+        (log/debug (str user))
+        (if-not (:errors res)
+          (ok res)
+          (bad-request res))))
+
+    (POST "/auth/login" []
+      :tags ["auth"]
+      :return   {:account_id s/Str}
+      :body [user {:email s/Str :password s/Str}]
+      :summary "ログイン"
+      (let [res (login user)]
+        (log/debug (str user))
+        (if-not (:errors res)
+          (ok res)
+          (case (get-in res [:errors :type])
+            :unmatch (bad-request res)
+            :nouser (not-found res)))))
+
+    (POST "/auth/verity" []
+      :tags ["auth"]
+      :return   {:auth_token s/Str}
+      :body [user {:account_id s/Str :token s/Str}]
+      :summary "二要素認証確認"
+      (let [res (verify user)]
+        (log/debug (str user))
+        (if-not (:errors res)
+          (ok res)
+          (unauthorized res))))
 
     (GET "/checky" []
       :tags ["user" "checky"]
       :return       (s/maybe Account)
       :header-params [auth_token :- s/Str]
       :summary      "ユーザー情報と小切手口座情報を返す"
-      (do
-        (log/info (str auth_token))
-        (wrap-api
-          (fn [] (ok (check-and-create-account! auth_token))))))
+      (let [res (get-account-by-token auth_token)]
+        (log/debug (str auth_token))
+        (if-not (:errors res)
+          (ok res)
+          (bad-request res))))
 
     ;; 小切手発行API
     (POST "/checky/:id/issue" []
@@ -90,10 +199,8 @@
       :header-params [auth_token :- s/Str]
       :form-params  [amount :- Long]
       :summary      "小切手の発行"
-      (let [user (getuser auth_token)
-            accid {:account_id id}
-            token (sec-str)
-            account (first (db/get-account-by-accid accid))
+      (let [token (sec-str)
+            account (get-account-by-accountid id)
             new-balance (if account (- (account :balance) amount) -1)]
         (cond
           (nil? account) (not-found {:errors {:msg "checky口座が存在しません" :id id}})
@@ -101,9 +208,8 @@
           :else
             (do
               (create-check! id token auth_token amount)
-              ;; なんでid で更新してaccount_id で引くのか...
-              (db/update-balance! {:id (account :id) :balance new-balance})
-              (let [u_account (first (db/get-account-by-accid accid))]
+              (db/update-balance! {:id (:id account) :balance new-balance})
+              (let [u_account (get-account-by-accountid id)]
                 (ok {:account u_account :checkid (id-gen id token)}))))))
 
     ;; 小切手受け取りAPI
@@ -112,16 +218,15 @@
       :return {:msg s/Str}
       :body [rcv {:id s/Str :receiver s/Str}]
       :summary "小切手の受け取り"
-      (let [id (rcv :id)
-            ;; TODO: なんでマップから取り出してマップに詰めるんだ...
+      (let [id (:id rcv)
             check (first (db/get-check-by-key {:id id}))
-            status (if check (check :status) nil)]
+            status (:status check)]
         (cond
           (nil? check) (not-found {:msg "小切手がありません" :id id})
           (not= 0 status) (bad-request {:msg "すでに処理済みです" :status status})
           :else
             (do
-              (db/receive-check! {:id id :dest (rcv :receiver)})
+              (db/receive-check! {:id id :dest (:receiver rcv)})
               (ok {:msg "受け取りました"})))))
 
     ;; 口座入力API
@@ -155,15 +260,12 @@
       :return {:msg s/Str :count s/Int}
       :form-params [auth_token :- s/Str]
       :summary "小切手の承認"
-      (wrap-api
-        (fn []
-          (log/info (str "/check/approve:" auth_token))
-          ;; 振込予約
-          (let [count (for [check (db/get-checks-by-status {:status 3})]
-                        (transfer auth_token check))]
-            ;; 振込承認
-            (approve auth_token)
-            (ok {:msg "振込が行われました" :count count})))))
+      (do
+        (log/debug (str "/check/approve:" auth_token))
+        ;; 振込予約
+        (let [count (for [check (db/get-checks-by-status {:status 3})]
+                      (db/done-check! check))]
+          (ok {:msg "振込が行われました" :count (reduce + count)}))))
 
     ;; 小切手一覧
     (GET "/checks" []

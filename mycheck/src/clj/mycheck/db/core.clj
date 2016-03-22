@@ -12,3 +12,4 @@
 
 (defqueries "sql/account_queries.sql" {:connection conn})
 (defqueries "sql/check_queries.sql" {:connection conn})
+(defqueries "sql/token_queries.sql" {:connection conn})

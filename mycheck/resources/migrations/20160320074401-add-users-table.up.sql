@@ -1,0 +1,6 @@
+CREATE TABLE tokens (
+  id IDENTITY,
+  account_id VARCHAR(20) UNIQUE ,
+  token VARCHAR(512) UNIQUE,
+  create_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

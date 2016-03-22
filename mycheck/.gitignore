@@ -12,3 +12,4 @@ profiles.clj
 /log
 .nrepl-port
 *.sh
+*.db
