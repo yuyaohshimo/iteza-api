@@ -31,6 +31,9 @@
 (defn approve-page []
   (layout/render "approve.html"))
 
+(defn regist-page []
+  (layout/render "regist.html"))
+
 (defn docs-page []
   (layout/render "docs.html"
            {:docs (-> "docs/docs.md" io/resource slurp)}))
@@ -41,4 +44,5 @@
   (GET "/about" [] (about-page))
   (GET "/docs" [] (docs-page))
   (GET "/hello" [] (hello-page))
-  (GET "/approve" [] (approve-page)))
+  (GET "/approve" [] (approve-page))
+  (GET "/regist" [] (regist-page)))
