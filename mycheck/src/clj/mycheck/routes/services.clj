@@ -6,9 +6,9 @@
             [config.core :refer [env]]
             [mycheck.db.core :as db]
             [mycheck.api.authy :as auth]
-            [buddy.hashers :as h])
-  (:use     [slingshot.slingshot :only [try+ throw+]]
-            [mycheck.api.twillio]))
+            [buddy.hashers :as h]
+            [mycheck.api.twillio :as tw])
+  (:use     [slingshot.slingshot :only [try+ throw+]]))
 
 ;; schema
 ;; user schema
@@ -220,6 +220,7 @@
       :summary "小切手の受け取り"
       (let [id (:id rcv)
             check (first (db/get-check-by-key {:id id}))
+            from (get-account-by-accountid (:account_id check))
             status (:status check)]
         (cond
           (nil? check) (not-found {:msg "小切手がありません" :id id})
@@ -227,6 +228,14 @@
           :else
             (do
               (db/receive-check! {:id id :dest (:receiver rcv)})
+              (tw/send-sms
+                (str "あなたが発行した、ID:"
+                  (str (:id check))
+                  " ¥"
+                  (str (:amount check))
+                  " の小切手が受領されました。次回のお支払いに使えるクーポンが届いています！\n"
+                  "http://www.fiftyriver.net:3000/coupon")
+                (str "+81" (:phone_number from)))
               (ok {:msg "受け取りました"})))))
 
     ;; 口座入力API
@@ -250,7 +259,7 @@
       (let [count (db/ready-check! {:dest (rcv :receiver)})]
         (if (not= 0 count)
           (do
-            (send-sms "承認が必要です")
+            (tw/send-sms "承認が必要です" (:sms-to env))
             (ok {:msg "入金予約を行いました。承認後、振込が行われます"}))
           (bad-request {:msg "処理出来ない状態か、登録のないメールアドレスです"}))))
 
