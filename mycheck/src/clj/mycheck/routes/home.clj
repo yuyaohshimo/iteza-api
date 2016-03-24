@@ -45,4 +45,6 @@
   (GET "/docs" [] (docs-page))
   (GET "/hello" [] (hello-page))
   (GET "/approve" [] (approve-page))
-  (GET "/regist" [] (regist-page)))
+  (GET "/regist" [] (regist-page))
+  (GET "/coupon" []
+    (layout/render "coupon.html")))

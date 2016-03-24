@@ -31,3 +31,30 @@ body {
   }
 }
 
+section#coupon {
+	background: url("../img/bk-freeze.jpg");
+	text-align: center;
+	color: white;
+}
+
+img {
+	display: block;
+	margin: auto;
+}
+
+div.section-heading {
+	margin-bottom: 20px;
+}
+
+div.coupon-comment {
+	margin-top: 20px;
+	margin-bo: 20px;
+	color: gray;
+	background: white;
+	border-radius: 10px;
+	padding: 5px 40px 20px;
+}
+
+div.coupon-comment>h3{
+	margin-top: 20px;
+}
