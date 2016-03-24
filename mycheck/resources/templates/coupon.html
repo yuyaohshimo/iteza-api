@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <META http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <META name="viewport" content="width=device-width, initial-scale=1">
+  <title>Welcome to mycheck</title>
+
+  <!-- styles -->
+  {% style "/assets/bootstrap/css/bootstrap.min.css" %} {% style "/assets/font-awesome/css/font-awesome.min.css" %} {% style "/css/screen.css" %}
+</head>
+
+<body>
+
+<section id="coupon">
+
+  <div class="container" >
+    <div class="section-heading inverse scrollpoint sp-effect3">
+      <h3>Thank you! <h3>
+      <div class="divider"></div>
+    </div>
+    <div class="row">
+      <div class="col-md-10 col-md-push-1 scrollpoint sp-effect3">
+        <div class="review-filtering">
+          <div class="review">
+            <div class="row">
+              <div class="col-md-2">
+                <div class="review-person">
+                  <img src="{{servlet-context}}/img/salestag2.png" alt="">
+                </div>
+              </div>
+              <div class="col-md-10">
+                <div class="coupon-comment">
+                  <h3>次回ご利用の際<br/>自動的に割引されます。</h3>
+                  <p>
+                    ご利用お待ちしています。
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="row" style="height: 20px"></div>
+  </div>
+</section>
+
+  <!-- scripts -->
+  {% script "/assets/jquery/jquery.min.js" %} {% script "/assets/tether/dist/js/tether.min.js" %} {% script "/assets/bootstrap/js/bootstrap.min.js" %}
+
+  <script type="text/javascript">
+    var context = "{{servlet-context}}";
+  </script>
+</body>
+
+</html>

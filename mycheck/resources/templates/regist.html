@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container">
+  <div class="row text-center pad-top ">
+    <div class="col-md-12">
+      <h2>口座登録</h2>
+    </div>
+  </div>
+  <div class="row  pad-top">
+
+    <div class="col-md-4 col-md-offset-4 col-sm-6 col-sm-offset-3 col-xs-10 col-xs-offset-1">
+      <div class="panel panel-default">
+        <div class="panel-heading">
+          <strong>初期残高は 100,000円です</strong>
+        </div>
+        <div class="panel-body">
+          <form role="form">
+            <div id="result" class="alert hidden" ></div>
+            <div class="form-group input-group">
+              <span class="input-group-addon"><i class="fa fa-circle-o-notch fa-fw"></i></span>
+              <input id="user_name" type="text" class="form-control" placeholder="氏名" />
+            </div>
+            <div class="form-group input-group">
+              <span class="input-group-addon"><i class="fa fa-mobile fa-fw"  ></i></span>
+              <input id="phone_number" type="text" class="form-control" placeholder="携帯電話番号" />
+            </div>
+            <div class="form-group input-group">
+              <span class="input-group-addon"><i class="fa fa-at fa-fw"  ></i></span>
+              <input id="email" type="text" class="form-control" placeholder="メールアドレス" />
+            </div>
+            <div class="form-group input-group">
+              <span class="input-group-addon"><i class="fa fa-lock fa-fw"  ></i></span>
+              <input id="password" type="password" class="form-control" placeholder="パスワード" />
+            </div>
+            <div class="form-group input-group">
+              <span class="input-group-addon"><i class="fa fa-lock fa-fw"  ></i></span>
+              <input id="password_re" type="password" class="form-control" placeholder="パスワード再入力" />
+            </div>
+            <button id="registbtn" class="btn btn-success " >登録する</button>
+            <hr /> <a href="#">ログインはこちら</a>
+          </form>
+        </div>
+
+      </div>
+    </div>
+  </div>
+{% endblock %}
+
+{% block page-scripts %}
+<script>
+  $(function(){
+    $('#registbtn').on('click',function(e){
+      e.preventDefault();
+      var data = {
+        email: $("#email").val(),
+        phone_number: $("#phone_number").val(),
+        password: $("#password").val(),
+        user_name: $("#user_name").val()
+      };
+      $.ajax({
+        type: "POST",
+        url: "/api/auth/create",
+        data: JSON.stringify(data),
+        contentType: "application/json",
+        dataType: "json",
+        success: function(ret){
+                   console.log(ret);
+                   $("#result").removeClass("hidden");
+                   $("#result").addClass("show");
+                   $("#result").addClass("alert-success");
+                   $("#result").text("account_id:" + ret.account_id);
+                 },
+        error:   function(ret){
+                   console.log(ret);
+                   $("#result").removeClass("hidden");
+                   $("#result").addClass("show");
+                   $("#result").addClass("alert-danger");
+                   $("#result").text(ret.responseJSON.errors.message);
+                 },
+      });
+
+    });
+  });
+</script>
+
+{% endblock %}

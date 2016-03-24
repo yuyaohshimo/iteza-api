@@ -229,12 +229,10 @@
             (do
               (db/receive-check! {:id id :dest (:receiver rcv)})
               (tw/send-sms
-                (str "あなたが発行した、ID:"
+                (str "ID:"
                   (str (:id check))
-                  " ¥"
-                  (str (:amount check))
-                  " の小切手が受領されました。次回のお支払いに使えるクーポンが届いています！\n"
-                  "http://www.fiftyriver.net:3000/coupon")
+                  " の小切手が受領されました。クーポンが届いています！\n"
+                  "http://goo.gl/EaPGmq")
                 (str "+81" (:phone_number from)))
               (ok {:msg "受け取りました"})))))
 
